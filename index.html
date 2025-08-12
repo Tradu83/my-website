@@ -14,6 +14,13 @@
             overflow: hidden;
         }
 
+        /* Định dạng cho trình phát video của Google */
+        cast-media-player {
+            width: 100vw;
+            height: 100vh;
+            display: none; /* Ẩn cast-media-player mặc định */
+        }
+
         /* YouTube player container */
         #youtube-player {
             width: 100vw;
@@ -24,17 +31,18 @@
         /* Lớp phủ để hiển thị tên người xem */
         #viewer-overlay {
             position: absolute;
-            bottom: 10%;
-            left: 20px;
-            z-index: 1000;
+            bottom: 10%; /* Vị trí cách đáy màn hình 10% */
+            left: 20px;  /* Vị trí cách lề trái 20px */
+            z-index: 1000; /* Đảm bảo hiển thị trên video */
             
-            background-color: rgba(0, 0, 0, 0.6);
-            color: #FFF;
+            background-color: rgba(0, 0, 0, 0.6); /* Nền đen mờ */
+            color: #FFF; /* Chữ trắng */
             padding: 10px 20px;
             border-radius: 8px;
             font-family: sans-serif;
             font-size: 24px;
 
+            /* Hiệu ứng mờ dần khi ẩn/hiện */
             opacity: 0;
             transition: opacity 0.5s ease-in-out;
         }
@@ -49,28 +57,14 @@
             font-size: 24px;
             z-index: 1001;
         }
-
-        /* Debug info */
-        #debug-info {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            font-family: monospace;
-            font-size: 12px;
-            z-index: 1002;
-            max-width: 300px;
-        }
     </style>
 </head>
 <body>
+
+    <cast-media-player></cast-media-player>
     <div id="youtube-player"></div>
     <div id="viewer-overlay"></div>
     <div id="loading">Đang tải video...</div>
-    <div id="debug-info">Debug: Khởi tạo...</div>
 
     <!-- YouTube IFrame API -->
     <script src="https://www.youtube.com/iframe_api"></script>
@@ -78,12 +72,6 @@
     <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 
     <script>
-        // Debug function
-        function debugLog(message) {
-            console.log(message);
-            document.getElementById('debug-info').innerText = `Debug: ${message}`;
-        }
-
         // Lấy các thực thể cốt lõi của Cast Framework
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
@@ -91,18 +79,15 @@
         // Lấy tham chiếu đến các phần tử HTML
         const viewerOverlay = document.getElementById('viewer-overlay');
         const youtubePlayer = document.getElementById('youtube-player');
+        const castMediaPlayer = document.querySelector('cast-media-player');
         const loading = document.getElementById('loading');
-        const debugInfo = document.getElementById('debug-info');
         
         let player; // YouTube player instance
         let currentVideoId = null;
-        let isYouTubePlayerReady = false;
-
-        debugLog('Cast Framework khởi tạo');
 
         // Khởi tạo YouTube IFrame API
         function onYouTubeIframeAPIReady() {
-            debugLog('YouTube IFrame API Ready');
+            console.log('YouTube IFrame API Ready');
             player = new YT.Player('youtube-player', {
                 height: '100%',
                 width: '100%',
@@ -127,44 +112,54 @@
         }
 
         function onPlayerReady(event) {
-            debugLog('YouTube Player Ready');
-            isYouTubePlayerReady = true;
+            console.log('YouTube Player Ready');
             loading.style.display = 'none';
         }
 
         function onPlayerStateChange(event) {
-            debugLog(`Player State: ${event.data}`);
+            console.log('Player State Changed:', event.data);
+            
+            // YT.PlayerState.PLAYING = 1
+            // YT.PlayerState.PAUSED = 2
+            // YT.PlayerState.ENDED = 0
+            // YT.PlayerState.BUFFERING = 3
+            // YT.PlayerState.CUED = 5
             
             switch (event.data) {
                 case YT.PlayerState.PLAYING:
-                    debugLog('Video đang phát');
-                    loading.style.display = 'none';
+                    console.log('Video is playing');
+                    // Cập nhật trạng thái Cast
+                    playerManager.onLoad();
                     break;
                     
                 case YT.PlayerState.PAUSED:
-                    debugLog('Video tạm dừng');
+                    console.log('Video is paused');
                     break;
                     
                 case YT.PlayerState.ENDED:
-                    debugLog('Video kết thúc');
+                    console.log('Video ended');
+                    // Video kết thúc, ẩn overlay
                     viewerOverlay.style.opacity = 0;
+                    // Thông báo cho Cast Framework
+                    playerManager.onLoad();
                     break;
                     
                 case YT.PlayerState.BUFFERING:
-                    debugLog('Video đang buffer');
+                    console.log('Video is buffering');
                     loading.style.display = 'block';
                     break;
                     
                 case YT.PlayerState.CUED:
-                    debugLog('Video sẵn sàng');
+                    console.log('Video is cued');
                     loading.style.display = 'none';
                     break;
             }
         }
 
         function onPlayerError(event) {
-            debugLog(`YouTube Error: ${event.data}`);
+            console.error('YouTube Player Error:', event.data);
             
+            // Mã lỗi YouTube
             const errorMessages = {
                 2: 'Tham số không hợp lệ',
                 5: 'HTML5 player error',
@@ -175,13 +170,13 @@
             
             const errorMessage = errorMessages[event.data] || 'Lỗi phát video';
             loading.innerText = errorMessage;
+            
+            // Ẩn overlay khi có lỗi
             viewerOverlay.style.opacity = 0;
         }
 
         // Hàm extract video ID từ URL
         function extractVideoId(url) {
-            debugLog(`Extracting video ID from: ${url}`);
-            
             const patterns = [
                 /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/,
                 /youtube:\/\/([^&\n?#]+)/,
@@ -191,13 +186,9 @@
             for (let pattern of patterns) {
                 const match = url.match(pattern);
                 if (match) {
-                    const videoId = match[1];
-                    debugLog(`Found video ID: ${videoId}`);
-                    return videoId;
+                    return match[1];
                 }
             }
-            
-            debugLog('No video ID found');
             return null;
         }
 
@@ -205,47 +196,32 @@
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
             loadRequestData => {
-                debugLog('Load Request received');
                 console.log('Load Request:', loadRequestData);
                 
                 const media = loadRequestData.media;
                 const customData = media.customData;
                 const contentId = media.contentId;
                 
-                debugLog(`Content ID: ${contentId}`);
-                debugLog(`Custom Data: ${JSON.stringify(customData)}`);
-                
                 // Extract video ID từ URL
                 const videoId = extractVideoId(contentId);
                 
                 if (videoId) {
-                    debugLog(`Processing YouTube video: ${videoId}`);
+                    console.log('YouTube Video ID:', videoId);
                     currentVideoId = videoId;
                     
                     // Hiển thị YouTube player
                     youtubePlayer.style.display = 'block';
+                    castMediaPlayer.style.display = 'none';
                     
                     // Load video vào YouTube player
-                    if (isYouTubePlayerReady && player && player.loadVideoById) {
-                        debugLog('Loading video into YouTube player');
+                    if (player && player.loadVideoById) {
                         player.loadVideoById(videoId);
                         loading.style.display = 'block';
-                    } else {
-                        debugLog('YouTube player not ready, waiting...');
-                        // Đợi YouTube player sẵn sàng
-                        const checkPlayerReady = setInterval(() => {
-                            if (isYouTubePlayerReady && player && player.loadVideoById) {
-                                debugLog('YouTube player ready, loading video now');
-                                player.loadVideoById(videoId);
-                                loading.style.display = 'block';
-                                clearInterval(checkPlayerReady);
-                            }
-                        }, 100);
                     }
                     
                     // Hiển thị tên người xem
                     if (customData && customData.viewerName) {
-                        debugLog(`Video added by: ${customData.viewerName}`);
+                        console.log('Video added by:', customData.viewerName);
                         viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
                         viewerOverlay.style.opacity = 1;
                     } else {
@@ -255,9 +231,10 @@
                     // Trả về null để ngăn Cast Framework xử lý media mặc định
                     return null;
                 } else {
-                    debugLog('Not a YouTube URL, using default player');
                     // Nếu không phải YouTube URL, sử dụng Cast Media Player mặc định
+                    console.log('Using default Cast Media Player');
                     youtubePlayer.style.display = 'none';
+                    castMediaPlayer.style.display = 'block';
                     
                     // Hiển thị tên người xem
                     if (customData && customData.viewerName) {
@@ -270,11 +247,27 @@
             }
         );
         
+        // Lắng nghe sự kiện thay đổi trạng thái của trình phát
+        context.addEventListener(cast.framework.events.EventType.PLAYER_STATE_CHANGED, (event) => {
+            console.log('Player State Changed:', event.playerState);
+            
+            // Nếu trình phát chuyển sang trạng thái IDLE
+            if (event.playerState === cast.framework.messages.PlayerState.IDLE) {
+                // Ẩn overlay
+                viewerOverlay.style.opacity = 0;
+                loading.style.display = 'none';
+            }
+        });
+
+        // Xử lý các lệnh điều khiển từ ứng dụng Android
+        playerManager.addEventListener(cast.framework.events.EventType.MEDIA_STATUS, (event) => {
+            console.log('Media Status:', event);
+        });
+
         // Xử lý các lệnh điều khiển media
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.PLAY,
             () => {
-                debugLog('Play command received');
                 if (player && player.playVideo) {
                     player.playVideo();
                 }
@@ -285,7 +278,6 @@
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.PAUSE,
             () => {
-                debugLog('Pause command received');
                 if (player && player.pauseVideo) {
                     player.pauseVideo();
                 }
@@ -296,9 +288,9 @@
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.SEEK,
             (seekRequestData) => {
-                debugLog(`Seek command received: ${seekRequestData.currentTime}`);
                 if (player && player.seekTo) {
-                    player.seekTo(seekRequestData.currentTime, true);
+                    const seekTime = seekRequestData.currentTime;
+                    player.seekTo(seekTime, true);
                 }
                 return null;
             }
@@ -307,7 +299,6 @@
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.STOP,
             () => {
-                debugLog('Stop command received');
                 if (player && player.stopVideo) {
                     player.stopVideo();
                 }
@@ -317,10 +308,10 @@
 
         // Bắt đầu chạy Receiver
         const options = new cast.framework.CastReceiverOptions();
-        options.disableIdleTimeout = true;
+        options.disableIdleTimeout = true; // Không để receiver tự ngắt kết nối
         context.start(options);
 
-        debugLog('Custom YouTube Receiver Started!');
+        console.log('Custom YouTube Receiver Started!');
     </script>
 </body>
 </html>
