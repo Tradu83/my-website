@@ -99,7 +99,9 @@
                     'showinfo': 0,
                     'modestbranding': 1,
                     'fs': 1,
-                    'playsinline': 0
+                    'playsinline': 0,
+                    'enablejsapi': 1,
+                    'origin': window.location.origin
                 },
                 events: {
                     'onReady': onPlayerReady,
@@ -120,18 +122,57 @@
             // YT.PlayerState.PLAYING = 1
             // YT.PlayerState.PAUSED = 2
             // YT.PlayerState.ENDED = 0
+            // YT.PlayerState.BUFFERING = 3
+            // YT.PlayerState.CUED = 5
             
-            if (event.data === YT.PlayerState.ENDED) {
-                // Video kết thúc, ẩn overlay
-                viewerOverlay.style.opacity = 0;
-                // Thông báo cho Cast Framework
-                playerManager.onLoad();
+            switch (event.data) {
+                case YT.PlayerState.PLAYING:
+                    console.log('Video is playing');
+                    // Cập nhật trạng thái Cast
+                    playerManager.onLoad();
+                    break;
+                    
+                case YT.PlayerState.PAUSED:
+                    console.log('Video is paused');
+                    break;
+                    
+                case YT.PlayerState.ENDED:
+                    console.log('Video ended');
+                    // Video kết thúc, ẩn overlay
+                    viewerOverlay.style.opacity = 0;
+                    // Thông báo cho Cast Framework
+                    playerManager.onLoad();
+                    break;
+                    
+                case YT.PlayerState.BUFFERING:
+                    console.log('Video is buffering');
+                    loading.style.display = 'block';
+                    break;
+                    
+                case YT.PlayerState.CUED:
+                    console.log('Video is cued');
+                    loading.style.display = 'none';
+                    break;
             }
         }
 
         function onPlayerError(event) {
             console.error('YouTube Player Error:', event.data);
-            loading.innerText = 'Lỗi phát video';
+            
+            // Mã lỗi YouTube
+            const errorMessages = {
+                2: 'Tham số không hợp lệ',
+                5: 'HTML5 player error',
+                100: 'Video không tìm thấy',
+                101: 'Video không được phép nhúng',
+                150: 'Video không được phép nhúng'
+            };
+            
+            const errorMessage = errorMessages[event.data] || 'Lỗi phát video';
+            loading.innerText = errorMessage;
+            
+            // Ẩn overlay khi có lỗi
+            viewerOverlay.style.opacity = 0;
         }
 
         // Hàm extract video ID từ URL
@@ -222,6 +263,48 @@
         playerManager.addEventListener(cast.framework.events.EventType.MEDIA_STATUS, (event) => {
             console.log('Media Status:', event);
         });
+
+        // Xử lý các lệnh điều khiển media
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.PLAY,
+            () => {
+                if (player && player.playVideo) {
+                    player.playVideo();
+                }
+                return null;
+            }
+        );
+
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.PAUSE,
+            () => {
+                if (player && player.pauseVideo) {
+                    player.pauseVideo();
+                }
+                return null;
+            }
+        );
+
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.SEEK,
+            (seekRequestData) => {
+                if (player && player.seekTo) {
+                    const seekTime = seekRequestData.currentTime;
+                    player.seekTo(seekTime, true);
+                }
+                return null;
+            }
+        );
+
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.STOP,
+            () => {
+                if (player && player.stopVideo) {
+                    player.stopVideo();
+                }
+                return null;
+            }
+        );
 
         // Bắt đầu chạy Receiver
         const options = new cast.framework.CastReceiverOptions();
