@@ -4,19 +4,64 @@
     <meta charset="UTF-8">
     <title>Chiếu YouTube Receiver</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
-        #player { width: 100vw; height: 100vh; }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        #player {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Vùng chứa cho dòng chữ chạy */
+        #overlay-container {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            overflow: hidden; /* Bắt buộc để hiệu ứng chạy đúng */
+            pointer-events: none; /* Cho phép click xuyên qua */
+        }
+
+        /* CSS cho dòng chữ "Người thêm" */
         #viewer-overlay {
-            position: absolute; bottom: 10%; left: 20px;
-            background-color: rgba(0, 0, 0, 0.7); color: #FFF; padding: 10px 20px;
-            border-radius: 8px; font-family: sans-serif; font-size: 24px;
-            opacity: 0; transition: opacity 0.5s ease-in-out;
+            /* Màu sắc và font chữ */
+            color: #CC0000; /* Màu đỏ đậm */
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 24px;
+            text-shadow: 2px 2px 4px #000; /* Thêm bóng để chữ nổi bật hơn */
+
+            /* Thuộc tính cho animation */
+            display: inline-block; /* Cho phép đo chiều rộng thực của chữ */
+            white-space: nowrap; /* Ngăn chữ xuống dòng */
+            padding-left: 100%; /* Đẩy chữ ra khỏi màn hình bên phải để bắt đầu */
+            
+            /* Khai báo animation */
+            animation-name: marquee;
+            animation-duration: 15s; /* Tốc độ chạy, bạn có thể thay đổi */
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
+        }
+
+        /* Định nghĩa animation chữ chạy từ phải sang trái */
+        @keyframes marquee {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-100%); }
         }
     </style>
 </head>
 <body>
     <div id="player"></div>
-    <div id="viewer-overlay"></div>
+    
+    <div id="overlay-container">
+        <div id="viewer-overlay"></div>
+    </div>
 
     <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     
@@ -50,15 +95,10 @@
                 const customData = media.customData;
 
                 if (ytPlayer && videoId) {
-                    // === THAY ĐỔI Ở ĐÂY ===
-                    // Thêm 'suggestedQuality' để gợi ý cho YouTube phát ở chất lượng cao.
-                    // 'hd1080' cho Full HD. Bạn cũng có thể dùng 'hd720' cho HD.
-                    // Lưu ý: YouTube vẫn có thể tự giảm chất lượng nếu mạng yếu.
                     ytPlayer.loadVideoById({
                         videoId: videoId,
                         suggestedQuality: 'hd1080'
                     });
-                    // ======================
 
                     if (customData && customData.viewerName) {
                         viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
@@ -85,7 +125,9 @@
             }
         }
 
-        context.start();
+        const options = new cast.framework.CastReceiverOptions();
+        options.disableIdleTimeout = true;
+        context.start(options);
     </script>
 </body>
 </html>
