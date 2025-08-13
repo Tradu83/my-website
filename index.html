@@ -5,168 +5,290 @@
     <title>Chiếu YouTube Receiver</title>
     <style>
         html, body {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: #000; overflow: hidden; color: white;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
         }
-        cast-media-player {
-            width: 100vw; height: 100vh;
+        #player {
+            width: 100vw;
+            height: 100vh;
         }
-        .overlay-base {
-            position: absolute; width: 100%; text-align: center;
-            font-family: sans-serif; font-weight: bold;
-            text-shadow: 2px 2px 4px #000;
-            pointer-events: none; z-index: 2;
-            box-sizing: border-box; padding: 5px 15px;
+        /* Vùng chứa cho dòng chữ chạy */
+        #overlay-container {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            overflow: hidden;      /* Ẩn phần vượt khung */
+            pointer-events: none;  /* Cho phép click xuyên qua */
+            z-index: 2;            /* Hiển thị trên video */
         }
-        #viewer-overlay-container {
-            top: 20px; left: 0; overflow: hidden;
-        }
+        /* Dòng chữ chạy */
         #viewer-overlay {
-            color: #CC0000; font-size: 40px; display: inline-block;
-            white-space: nowrap; will-change: transform; opacity: 0;
-        }
-        #next-song-notification {
-            bottom: 80px; left: 0; font-size: 32px; color: #FFFF00;
-            display: none;
-        }
-        #reward-overlay {
-            bottom: 20px; left: 0; font-size: 36px; color: #00FF7F; /* Màu xanh lá */
-            display: none;
+            color: #CC0000;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 40px;
+            text-shadow: 1px 1px 2px #000;
+            display: inline-block;
+            white-space: nowrap;
+            will-change: transform; /* Tối ưu hiệu suất */
+            opacity: 0;             /* Ẩn khi chưa có nội dung */
         }
     </style>
+
     <script>
-        // ----- GIỮ LẠI CODE MARQUEE THÔNG MINH CỦA BẠN -----
-        (function () {
-            let styleEl;
-            function injectKeyframes(distance) {
-                if (!styleEl) {
-                    styleEl = document.createElement('style');
-                    styleEl.id = 'marquee-style';
-                    document.head.appendChild(styleEl);
-                }
-                styleEl.textContent = `@keyframes marqueeAnim { 0% { transform: translateX(0); } 100% { transform: translateX(${distance}px); } }`;
+    // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
+    (function () {
+        let styleEl;
+        function injectKeyframes(distance) {
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'marquee-style';
+                document.head.appendChild(styleEl);
             }
-            window.setMarquee = function () {
-                const textEl = document.getElementById('viewer-overlay');
-                if (!textEl || !textEl.textContent.trim()) return;
-                const screenWidth = window.innerWidth;
-                const textWidth = textEl.scrollWidth;
-                const distance = screenWidth - textWidth;
-                const duration = Math.max(8000, Math.min(40000, Math.abs(distance) * 20));
-                injectKeyframes(distance);
-                textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
-                textEl.style.opacity = 1;
-            };
-            window.addEventListener('resize', () => {
-                clearTimeout(window.__marqueeResizeTimer);
-                window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
-            });
-        })();
+            styleEl.textContent = `
+                @keyframes marqueeAnim {
+                    0% { transform: translateX(0); }
+                    100% { transform: translateX(${distance}px); }
+                }
+            `;
+        }
+
+        // Public để có thể gọi lại sau khi cập nhật nội dung
+        window.setMarquee = function () {
+            const textEl = document.getElementById('viewer-overlay');
+            if (!textEl) return;
+
+            // đo kích thước thực
+            const screenWidth = window.innerWidth;
+            const textWidth = textEl.scrollWidth;
+
+            // Khoảng di chuyển: dương nếu chữ ngắn hơn màn hình, âm nếu dài hơn
+            const distance = screenWidth - textWidth;
+
+            // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
+            const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
+
+            injectKeyframes(distance);
+            textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
+        };
+
+        // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
+        window.addEventListener('resize', () => {
+            clearTimeout(window.__marqueeResizeTimer);
+            window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
+        });
+    })();
     </script>
 </head>
 <body>
-    <cast-media-player></cast-media-player>
+    <div id="player"></div>
 
-    <div id="viewer-overlay-container" class="overlay-base">
+    <div id="overlay-container">
         <div id="viewer-overlay"></div>
     </div>
-    <div id="next-song-notification" class="overlay-base"></div>
-    <div id="reward-overlay" class="overlay-base"></div>
 
     <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
-
-        // Lấy các phần tử DOM
         const viewerOverlay = document.getElementById('viewer-overlay');
-        const nextSongNotification = document.getElementById('next-song-notification');
-        const rewardOverlay = document.getElementById('reward-overlay');
+        let ytPlayer;
 
-        // Biến toàn cục để quản lý
-        let timeCheckInterval = null;
-        let notificationShown = false;
-        let currentMediaItem = null; // Lưu thông tin bài hát đang phát
+        // YouTube IFrame API
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
 
-        // Lắng nghe sự kiện thay đổi trạng thái của trình phát
-        playerManager.addEventListener(
-            cast.framework.events.EventType.PLAYER_STATE_CHANGED,
-            (event) => {
-                // Ẩn các thông báo khi có thay đổi trạng thái
-                rewardOverlay.style.display = 'none';
-                nextSongNotification.style.display = 'none';
+        window.onYouTubeIframeAPIReady = function() {
+            ytPlayer = new YT.Player('player', {
+                height: '100%',
+                width: '100%',
+                playerVars: { autoplay: 1, controls: 0, rel: 0 },
+                events: { onStateChange: onPlayerStateChange }
+            });
+        };
 
-                if (event.playerState === cast.framework.messages.PlayerState.PLAYING) {
-                    startCheckingTime();
-                } else {
-                    stopCheckingTime();
-                    // KIỂM TRA NẾU VIDEO VỪA KẾT THÚC
-                    if (event.playerState === cast.framework.messages.PlayerState.IDLE &&
-                        event.idleReason === cast.framework.messages.IdleReason.ENDED) {
-                        // Gọi hàm hiển thị khen thưởng
-                        showRewardMessage(currentMediaItem);
-                    }
+        // Nhận lệnh LOAD từ sender
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            loadRequestData => {
+                const media = loadRequestData.media;
+                const videoId = media.contentId;
+                const customData = media.customData || {};
+
+                if (ytPlayer && videoId) {
+                    ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
                 }
-            }
-        );
 
-        // Lắng nghe sự kiện thay đổi thông tin media (khi chuyển bài)
-        playerManager.addEventListener(cast.framework.events.EventType.MEDIA_STATUS, (event) => {
-            if (event.mediaStatus.media) {
-                currentMediaItem = event.mediaStatus.media; // Lưu lại media hiện tại
-                const customData = currentMediaItem.customData || {};
-                
                 if (customData.viewerName) {
-                    viewerOverlay.textContent = `Ca sỹ: ${customData.viewerName}`;
-                    setTimeout(window.setMarquee, 0); // Kích hoạt marquee thông minh của bạn
+                    viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
+                    viewerOverlay.style.opacity = 1;
+                    // Tính lại animation theo nội dung mới
+                    // dùng setTimeout 0 để đảm bảo DOM đã cập nhật textWidth
+                    setTimeout(setMarquee, 0);
                 } else {
                     viewerOverlay.textContent = "";
                     viewerOverlay.style.opacity = 0;
                     viewerOverlay.style.animation = "none";
                 }
+                return null;
             }
-        });
+        );
 
-        // Hàm hiển thị thông báo khen thưởng
-        function showRewardMessage(item) {
-            if (item && item.customData && item.customData.viewerName) {
-                const viewerName = item.customData.viewerName;
-                const score = Math.floor(Math.random() * 11) + 90; // Điểm từ 90-100
-                
-                rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện rất tốt!<br>${score} điểm khen ngợi.`;
-                rewardOverlay.style.display = 'block';
-                
-                // Tự động ẩn sau 4 giây
-                setTimeout(() => { rewardOverlay.style.display = 'none'; }, 4000);
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.PLAY,
+            () => { if (ytPlayer) ytPlayer.playVideo(); return null; }
+        );
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.PAUSE,
+            () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
+        );
+
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
+                viewerOverlay.style.opacity = 0;
+                viewerOverlay.style.animation = "none";
             }
         }
 
-        // Hàm kiểm tra thời gian để báo bài tiếp theo
+        const options = new cast.framework.CastReceiverOptions();
+        options.disableIdleTimeout = true;
+        context.start(options);
+
+        // Nếu có text mặc định sẵn thì kích hoạt marquee khi load
+        window.addEventListener('load', () => {
+            if (viewerOverlay.textContent.trim() !== "") {
+                viewerOverlay.style.opacity = 1;
+                setMarquee();
+            }
+        });
+    </script>
+	
+	function showRewardMessage(item) {
+    // Kiểm tra xem video hiện tại có thông tin người thêm không
+    if (item && item.media.customData && item.media.customData.viewerName) {
+        const viewerName = item.media.customData.viewerName;
+        // Tạo một số ngẫu nhiên từ 90 đến 100
+        const score = Math.floor(Math.random() * 11) + 90;
+        
+        // Tạo nội dung thông báo 2 dòng
+        rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
+        
+        // Hiển thị thông báo
+        rewardOverlay.style.opacity = 1;
+        
+        // Tự động ẩn thông báo sau 4 giây
+        setTimeout(() => {
+            rewardOverlay.style.opacity = 0;
+        }, 4000);
+    }
+}
+
+	
+</head>
+<body>
+    <cast-media-player></cast-media-player>
+
+    <div id="overlay-container">
+        <div id="viewer-overlay" class="overlay-text"></div>
+    </div>
+    
+    <div id="next-song-notification" class="overlay-text"></div>
+
+    <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+
+    <script>
+        const context = cast.framework.CastReceiverContext.getInstance();
+        const playerManager = context.getPlayerManager();
+        const viewerOverlay = document.getElementById('viewer-overlay');
+        const nextSongNotification = document.getElementById('next-song-notification');
+
+        // Biến để quản lý bộ đếm thời gian
+        let timeCheckInterval = null;
+        let notificationShown = false; // Cờ để đảm bảo thông báo chỉ hiện 1 lần
+
+        // Lắng nghe các sự kiện để quản lý bộ đếm
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_STATE_CHANGED, 
+            (event) => {
+                // Nếu video đang phát, bắt đầu kiểm tra thời gian
+                if (event.playerState === cast.framework.messages.PlayerState.PLAYING) {
+                    startCheckingTime();
+                } 
+                // Nếu video dừng, kết thúc hoặc không hoạt động, dừng kiểm tra
+                else {
+                    stopCheckingTime();
+                }
+            }
+        );
+
+        playerManager.addEventListener(cast.framework.events.EventType.MEDIA_STATUS, (event) => {
+            // Cập nhật tên ca sỹ cho bài hát hiện tại
+            if (event.mediaStatus.media && event.mediaStatus.media.customData && event.mediaStatus.media.customData.viewerName) {
+                viewerOverlay.innerText = `Ca sỹ: ${event.mediaStatus.media.customData.viewerName}`;
+                viewerOverlay.style.display = 'inline-block';
+            } else {
+                viewerOverlay.style.display = 'none';
+            }
+        });
+		function onPlayerStateChange(event) {
+    // Kiểm tra xem video đã kết thúc chưa (YT.PlayerState.ENDED có giá trị là 0)
+    if (event.data === YT.PlayerState.ENDED) {
+        // Ẩn tên người thêm của video vừa kết thúc
+        viewerOverlay.style.opacity = 0;
+        
+        // Hiển thị thông báo khen thưởng cho video vừa kết thúc
+        showRewardMessage(currentItem);
+
+        // Sau 5 giây, gửi một yêu cầu nội bộ để Cast SDK tự động phát bài tiếp theo.
+        // Cast SDK sẽ tự xử lý các chế độ lặp lại.
+        setTimeout(() => {
+            playerManager.sendLocalMediaRequest({type: 'QUEUE_NEXT'});
+        }, 5000);
+    }
+}
+
         function startCheckingTime() {
+            // Dừng bộ đếm cũ nếu có
             stopCheckingTime();
-            notificationShown = false;
-            
+            notificationShown = false; // Reset cờ
+            nextSongNotification.style.display = 'none'; // Ẩn thông báo cũ
+
+            // Bắt đầu một bộ đếm mới, chạy mỗi giây
             timeCheckInterval = setInterval(() => {
                 const currentTime = playerManager.getCurrentTimeSec();
                 const duration = playerManager.getDurationSec();
 
+                // Nếu thời gian còn lại <= 5 giây và thông báo chưa được hiển thị
                 if (duration > 0 && (duration - currentTime <= 5) && !notificationShown) {
-                    notificationShown = true;
-                    const nextItem = playerManager.getQueueManager().getNextItem();
+                    notificationShown = true; // Đánh dấu là đã hiển thị
+                    
+                    // Lấy thông tin bài hát tiếp theo từ hàng đợi
+                    const queueManager = playerManager.getQueueManager();
+                    const nextItem = queueManager.getNextItem();
+                    
                     if (nextItem) {
                         const nextTitle = nextItem.media.metadata.title;
                         const nextViewer = nextItem.media.customData.viewerName;
                         nextSongNotification.innerText = `Tiếp theo: ${nextTitle} (Ca sỹ: ${nextViewer})`;
-                        nextSongNotification.style.display = 'block';
+                        nextSongNotification.style.display = 'inline-block';
                     }
-                    stopCheckingTime();
+                    
+                    stopCheckingTime(); // Dừng kiểm tra sau khi đã hiển thị
                 }
-            }, 1000);
+            }, 1000); // 1000ms = 1 giây
         }
 
         function stopCheckingTime() {
-            if (timeCheckInterval) clearInterval(timeCheckInterval);
-            timeCheckInterval = null;
+            if (timeCheckInterval) {
+                clearInterval(timeCheckInterval);
+                timeCheckInterval = null;
+            }
         }
 
         const options = new cast.framework.CastReceiverOptions();
