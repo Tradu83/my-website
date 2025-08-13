@@ -34,24 +34,44 @@
         const queueManager = playerManager.getQueueManager();
         const viewerOverlay = document.getElementById('viewer-overlay');
         const rewardOverlay = document.getElementById('reward-overlay');
+        
         let ytPlayer;
+        let isPlayerReady = false; // Biến cờ kiểm tra Player đã sẵn sàng chưa
+        let pendingItem = null; // Biến lưu lại video đang chờ phát
+        let currentItem = null; // Biến lưu video đang phát
 
-        let currentMediaItem = null;
-        let rewardTimeout;
-
+        // --- KHỞI TẠO YOUTUBE PLAYER ---
         window.onYouTubeIframeAPIReady = function() {
             ytPlayer = new YT.Player('player', {
                 height: '100%', width: '100%',
                 playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
-                events: { 'onStateChange': onPlayerStateChange }
+                events: {
+                    'onReady': onPlayerReady, // Sử dụng sự kiện này
+                    'onStateChange': onPlayerStateChange
+                }
             });
         };
 
+        // KHI PLAYER SẴN SÀNG, HÃY KIỂM TRA XEM CÓ VIDEO NÀO ĐANG CHỜ KHÔNG
+        function onPlayerReady() {
+            isPlayerReady = true;
+            if (pendingItem) {
+                playMediaItem(pendingItem);
+                pendingItem = null;
+            }
+        }
+        
+        // HÀM PHÁT VIDEO TRUNG TÂM
         function playMediaItem(item) {
-            if (!item || !ytPlayer || !ytPlayer.loadVideoById) return;
+            if (!item) return;
 
-            currentMediaItem = item;
-            // Trích xuất ID từ URL đầy đủ
+            // Nếu player chưa sẵn sàng, lưu video lại và chờ
+            if (!isPlayerReady || !ytPlayer || typeof ytPlayer.loadVideoById !== 'function') {
+                pendingItem = item;
+                return;
+            }
+
+            currentItem = item;
             const url = item.media.contentId;
             const videoId = url.split('v=')[1] ? url.split('v=')[1].split('&')[0] : null;
 
@@ -61,44 +81,50 @@
 
             const customData = item.media.customData;
             if (customData && customData.viewerName) {
-                viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
+                viewerOverlay.innerText = `Ca Sỹ trình bày: ${customData.viewerName}`;
                 viewerOverlay.style.opacity = 1;
             } else {
                 viewerOverlay.style.opacity = 0;
             }
         }
         
+        // HÀM HIỂN THỊ THÔNG BÁO
         function showRewardMessage(item) {
              if (item && item.media.customData && item.media.customData.viewerName) {
                 const viewerName = item.media.customData.viewerName;
                 const score = Math.floor(Math.random() * 11) + 90;
                 rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
                 rewardOverlay.style.opacity = 1;
-                if (rewardTimeout) clearTimeout(rewardTimeout);
-                rewardTimeout = setTimeout(() => { rewardOverlay.style.opacity = 0; }, 5000);
+                setTimeout(() => { rewardOverlay.style.opacity = 0; }, 4000);
             }
         }
 
-        // Lắng nghe sự thay đổi media từ Cast SDK
+        // KHI VIDEO KẾT THÚC, TỰ ĐỘNG CHUYỂN BÀI
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
+                viewerOverlay.style.opacity = 0;
+                showRewardMessage(currentItem);
+                setTimeout(() => {
+                    playerManager.sendLocalMediaRequest({type: 'QUEUE_NEXT'});
+                }, 5000);
+            }
+        }
+
+        // LẮNG NGHE LỆNH TỪ ĐIỆN THOẠI
         playerManager.addEventListener(
             cast.framework.events.EventType.MEDIA_STATUS, (event) => {
-                if(event.mediaStatus && event.mediaStatus.currentItemId) {
-                    const currentItemFromSDK = queueManager.getItemById(event.mediaStatus.currentItemId);
-                    if(currentItemFromSDK && (!currentMediaItem || currentItemFromSDK.itemId !== currentMediaItem.itemId)) {
-                        playMediaItem(currentItemFromSDK);
+                const mediaStatus = event.mediaStatus;
+                if (mediaStatus && mediaStatus.currentItemId) {
+                    // So sánh item ID hiện tại với item ID đang phát
+                    if (!currentItem || currentItem.itemId !== mediaStatus.currentItemId) {
+                        const newItem = queueManager.getItemById(mediaStatus.currentItemId);
+                        if (newItem) {
+                            playMediaItem(newItem);
+                        }
                     }
                 }
             }
         );
-
-        function onPlayerStateChange(event) {
-            if (event.data === YT.PlayerState.ENDED) {
-                viewerOverlay.style.opacity = 0;
-                // Không cần tự chuyển bài ở đây, Cast SDK sẽ tự gửi lệnh QUEUE_NEXT
-                // và chúng ta sẽ bắt được nó qua event listener ở trên
-                showRewardMessage(currentMediaItem);
-            }
-        }
 
         const options = new cast.framework.CastReceiverOptions();
         options.disableIdleTimeout = true;
