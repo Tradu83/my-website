@@ -4,129 +4,132 @@
     <meta charset="UTF-8">
     <title>Chiếu YouTube Receiver</title>
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #000;
-            overflow: hidden;
-        }
-
-        #player {
-            width: 100vw;
-            height: 100vh;
-        }
-
-        /* Vùng chứa cho dòng chữ chạy */
-        #overlay-container {
-            position: absolute;
-            top: 20px;
-            left: 0;
-            width: 100%;
-            overflow: hidden; /* Bắt buộc để hiệu ứng chạy đúng */
-            pointer-events: none; /* Cho phép click xuyên qua */
-        }
-
-        /* CSS cho dòng chữ "Người thêm" */
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
+        #player { width: 100vw; height: 100vh; }
         #viewer-overlay {
-            /* Màu sắc và font chữ */
-            color: #CC0000; /* Màu đỏ đậm */
-            font-weight: bold;
-            font-family: sans-serif;
-            font-size: 24px;
-            text-shadow: 2px 2px 4px #000; /* Thêm bóng để chữ nổi bật hơn */
-
-            /* Thuộc tính cho animation */
-            display: inline-block; /* Cho phép đo chiều rộng thực của chữ */
-            white-space: nowrap; /* Ngăn chữ xuống dòng */
-            padding-left: 100%; /* Đẩy chữ ra khỏi màn hình bên phải để bắt đầu */
-            
-            /* Khai báo animation */
-            animation-name: marquee;
-            animation-duration: 15s; /* Tốc độ chạy, bạn có thể thay đổi */
-            animation-timing-function: linear;
-            animation-iteration-count: infinite;
-        }
-
-        /* Định nghĩa animation chữ chạy từ phải sang trái */
-        @keyframes marquee {
-            0%   { transform: translateX(0); }
-            100% { transform: translateX(-100%); }
+            position: absolute; top: 20px; left: 20px;
+            background-color: rgba(0, 0, 0, 0.7); color: #CC0000; font-weight: bold;
+            padding: 10px 20px; border-radius: 8px; font-family: sans-serif; font-size: 24px;
+            text-shadow: 2px 2px 4px #000;
         }
     </style>
 </head>
 <body>
     <div id="player"></div>
-    
-    <div id="overlay-container">
-        <div id="viewer-overlay"></div>
-    </div>
+    <div id="viewer-overlay"></div>
 
     <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-    
+    <script src="https://www.youtube.com/iframe_api"></script>
+
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
+        // Lấy QueueManager để quản lý hàng đợi
+        const queueManager = playerManager.getQueueManager(); 
         const viewerOverlay = document.getElementById('viewer-overlay');
         let ytPlayer;
 
-        const tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        // --- Biến để quản lý trạng thái lặp lại ---
+        let currentRepeatMode = cast.framework.messages.RepeatMode.OFF;
+        let currentMediaItem = null;
 
+        // --- Khởi tạo YouTube Player ---
         window.onYouTubeIframeAPIReady = function() {
             ytPlayer = new YT.Player('player', {
-                height: '100%',
-                width: '100%',
+                height: '100%', width: '100%',
                 playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
-                events: {
-                    'onStateChange': onPlayerStateChange
-                }
+                events: { 'onStateChange': onPlayerStateChange }
             });
         };
 
-        playerManager.setMessageInterceptor(
-            cast.framework.messages.MessageType.LOAD,
-            loadRequestData => {
-                const media = loadRequestData.media;
-                const videoId = media.contentId;
-                const customData = media.customData;
+        // --- Hàm helper để phát một video ---
+        function playMediaItem(item) {
+            if (!item || !ytPlayer || !ytPlayer.loadVideoById) return;
 
-                if (ytPlayer && videoId) {
-                    ytPlayer.loadVideoById({
-                        videoId: videoId,
-                        suggestedQuality: 'hd1080'
-                    });
+            currentMediaItem = item;
+            const videoId = item.media.contentId;
+            const customData = item.media.customData;
+            
+            ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
 
-                    if (customData && customData.viewerName) {
-                        viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
-                        viewerOverlay.style.opacity = 1;
-                    } else {
-                        viewerOverlay.style.opacity = 0;
-                    }
-                }
-                
-                return null;
-            }
-        );
-
-        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PLAY, () => {
-             if (ytPlayer) ytPlayer.playVideo(); return null; 
-        });
-        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PAUSE, () => {
-            if (ytPlayer) ytPlayer.pauseVideo(); return null;
-        });
-
-        function onPlayerStateChange(event) {
-            if (event.data === YT.PlayerState.ENDED) {
+            if (customData && customData.viewerName) {
+                viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
+                viewerOverlay.style.opacity = 1;
+            } else {
                 viewerOverlay.style.opacity = 0;
             }
         }
 
+        // --- Can thiệp vào các lệnh từ điện thoại ---
+
+        // Khi load một danh sách mới
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            loadRequestData => {
+                // Lấy video đầu tiên trong danh sách và phát
+                const item = loadRequestData.items[0]; 
+                playMediaItem(item);
+                return null; 
+            }
+        );
+
+        // BẮT LỆNH "QUA BÀI"
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.QUEUE_NEXT,
+            () => {
+                const nextItem = queueManager.getNextItem();
+                if (nextItem) {
+                    playMediaItem(nextItem);
+                }
+                return null;
+            }
+        );
+
+        // BẮT LỆNH "PHÁT TRỰC TIẾP"
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.QUEUE_JUMP,
+            (jumpRequest) => {
+                const itemToPlay = queueManager.getItemById(jumpRequest.itemId);
+                if (itemToPlay) {
+                    playMediaItem(itemToPlay);
+                }
+                return null;
+            }
+        );
+        
+        // BẮT LỆNH "LẶP LẠI"
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.SET_REPEAT_MODE,
+            (request) => {
+                currentRepeatMode = request.repeatMode;
+                // Cập nhật lại queue của Cast SDK để nó biết chế độ lặp
+                queueManager.setRepeatMode(currentRepeatMode);
+                return null;
+            }
+        );
+
+        // --- Tự động xử lý khi video kết thúc ---
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) { // Khi video kết thúc
+                viewerOverlay.style.opacity = 0;
+                
+                // Nếu đang ở chế độ lặp lại 1 bài -> phát lại
+                if (currentRepeatMode === cast.framework.messages.RepeatMode.SINGLE) {
+                    playMediaItem(currentMediaItem);
+                } else {
+                    // Tự động chuyển bài tiếp theo
+                    // queueManager sẽ tự xử lý việc lặp lại toàn bộ danh sách
+                    const nextItem = queueManager.getNextItem();
+                    if (nextItem) {
+                        playMediaItem(nextItem);
+                    }
+                }
+            }
+        }
+        
+        // --- Khởi động receiver ---
         const options = new cast.framework.CastReceiverOptions();
-        options.disableIdleTimeout = true;
+        options.disableIdleTimeout = true; // Không tự ngắt kết nối
         context.start(options);
     </script>
 </body>
