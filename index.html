@@ -6,48 +6,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: #000; overflow: hidden;
     }
     #stage {
       position: relative;
-      width: 100vw;
-      height: 100vh;
+      width: 100vw; height: 100vh;
       background: #000;
     }
     #player {
       position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      border: 0;
-      background: #000;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      border: 0; background: #000;
       z-index: 1;
     }
     #overlay-container {
       position: absolute;
-      top: 20px;
-      left: 0;
-      width: 100%;
-      overflow: hidden;
-      pointer-events: none;
-      z-index: 2;
+      top: 20px; left: 0;
+      width: 100%; overflow: hidden;
+      pointer-events: none; z-index: 2;
     }
     #viewer-overlay {
       color: #CC0000;
-      font-weight: bold;
-      font-family: sans-serif;
-      font-size: 40px;
-      text-shadow: 1px 1px 2px #000;
-      display: inline-block;
-      white-space: nowrap;
-      will-change: transform;
-      opacity: 0;
+      font-weight: bold; font-family: sans-serif;
+      font-size: 40px; text-shadow: 1px 1px 2px #000;
+      display: inline-block; white-space: nowrap;
+      will-change: transform; opacity: 0;
+    }
+    #reward-overlay {
+      position: absolute;
+      bottom: 20%; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff; padding: 20px 30px;
+      border-radius: 12px;
+      font-size: 24px; text-align: center;
+      z-index: 3; display: none;
     }
   </style>
 
@@ -62,7 +58,7 @@
     })();
   </script>
   <script>
-    // Marquee chữ chạy qua lại
+    // Chữ chạy qua lại
     (function () {
       let styleEl;
       function injectKeyframes(distance) {
@@ -101,6 +97,7 @@
     <div id="overlay-container">
       <div id="viewer-overlay"></div>
     </div>
+    <div id="reward-overlay"></div>
   </div>
 
   <script>
@@ -108,30 +105,57 @@
     const playerManager = context.getPlayerManager();
     const queueManager = playerManager.getQueueManager();
     const viewerOverlay = document.getElementById('viewer-overlay');
+    const rewardOverlay = document.getElementById('reward-overlay');
 
     let ytPlayer = null;
-    let pendingVideoId = null;
     let ready = false;
+    let rewardShown = false;
+    let rewardCheckTimer = null;
 
-    // Tạo YouTube Player khi API sẵn sàng
+    // Pending load nếu player chưa sẵn sàng
+    let pendingVideoId = null;
+    let pendingStartTime = 0;
+
+    // Hàm khen thưởng
+    function showRewardMessage(item) {
+      if (item && item.media && item.media.customData && item.media.customData.viewerName) {
+        const viewerName = item.media.customData.viewerName;
+        const score = Math.floor(Math.random() * 11) + 90;
+        rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện rất tốt!<br>${score} điểm khen ngợi.`;
+        rewardOverlay.style.display = 'block';
+        setTimeout(() => { rewardOverlay.style.display = 'none'; }, 4000);
+      }
+    }
+
+    function loadVideoId(videoId, startTimeSec = 0) {
+      if (!videoId) return;
+      if (ready && ytPlayer) {
+        ytPlayer.loadVideoById({
+          videoId,
+          startSeconds: Math.max(0, startTimeSec),
+          suggestedQuality: 'hd1080'
+        });
+      } else {
+        pendingVideoId = videoId;
+        pendingStartTime = startTimeSec;
+      }
+    }
+
+    // YouTube Player sẵn sàng
     window.onYouTubeIframeAPIReady = function() {
       ytPlayer = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
+        height: '100%', width: '100%',
         playerVars: {
-          autoplay: 1,
-          controls: 0,
-          rel: 0,
-          modestbranding: 1,
-          iv_load_policy: 3,
-          disablekb: 1,
+          autoplay: 1, controls: 0, rel: 0,
+          modestbranding: 1, iv_load_policy: 3, disablekb: 1
         },
         events: {
           onReady: () => {
             ready = true;
             if (pendingVideoId) {
-              loadVideoId(pendingVideoId);
+              loadVideoId(pendingVideoId, pendingStartTime);
               pendingVideoId = null;
+              pendingStartTime = 0;
             }
           },
           onStateChange: onYTStateChange
@@ -139,21 +163,29 @@
       });
     };
 
-    function loadVideoId(videoId, startTimeSec = 0) {
-      if (!videoId) return;
-      try {
-        ytPlayer.loadVideoById({ videoId, startSeconds: Math.max(0, startTimeSec), suggestedQuality: 'hd1080' });
-      } catch (e) {
-        pendingVideoId = videoId;
-      }
-    }
-
     function onYTStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) {
+        clearInterval(rewardCheckTimer);
+        rewardCheckTimer = setInterval(() => {
+          const duration = ytPlayer.getDuration();
+          const current = ytPlayer.getCurrentTime();
+          if (!rewardShown && duration - current <= 5) {
+            const currentItem = queueManager.getCurrentItem();
+            showRewardMessage(currentItem);
+            rewardShown = true;
+          }
+        }, 1000);
+      }
       if (event.data === YT.PlayerState.ENDED) {
+        clearInterval(rewardCheckTimer);
+        rewardShown = false;
         const nextItem = queueManager.getNextItem();
         if (nextItem && nextItem.media) {
           playQueueItem(nextItem);
         }
+      }
+      if (event.data === YT.PlayerState.PAUSED) {
+        clearInterval(rewardCheckTimer);
       }
     }
 
@@ -172,25 +204,24 @@
 
     function playQueueItem(item, seekTimeSec) {
       if (!item || !item.media) return;
-      const videoId = item.media.contentId; // <-- nhận từ MediaQueueItemMapper (videoId thuần)
+      const videoId = item.media.contentId;
       updateOverlayFromMedia(item.media);
       loadVideoId(videoId, seekTimeSec || 0);
       queueManager.setCurrentItem(item.itemId);
+      rewardShown = false;
     }
 
-    // Gán lệnh từ điện thoại vào YouTube Player
+    // Nhận lệnh từ app
     playerManager.setMessageInterceptor(
       cast.framework.messages.MessageType.LOAD,
       loadRequestData => {
         const media = loadRequestData.media || {};
-        const videoId = media.contentId; // videoId thuần
-        updateOverlayFromMedia(media);
+        const videoId = media.contentId;
         const startTime = (loadRequestData.currentTime || 0);
-        if (videoId) {
-          if (ready && ytPlayer) loadVideoId(videoId, startTime);
-          else pendingVideoId = videoId;
-        }
-        return null; // không để CAF xử lý mặc định
+        updateOverlayFromMedia(media);
+        loadVideoId(videoId, startTime);
+        rewardShown = false;
+        return null;
       }
     );
     playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PLAY, () => { ytPlayer?.playVideo(); return null; });
