@@ -17,7 +17,7 @@
             width: 100vw;
             height: 100vh;
         }
-
+	/*
         /* Vùng chứa cho dòng chữ chạy */
         #overlay-container {
             position: absolute;
@@ -44,7 +44,7 @@
             
             /* Khai báo animation */
             animation-name: marquee;
-            animation-duration: 15s; /* Tốc độ chạy, bạn có thể thay đổi */
+            animation-duration: 30s; /* Tốc độ chạy, bạn có thể thay đổi */
             animation-timing-function: linear;
             animation-iteration-count: infinite;
         }
@@ -55,8 +55,70 @@
 			50%  { transform: translateX(-100%); }   /* Chạy sang trái */
 			100% { transform: translateX(0); }       /* Quay lại bên phải */
 			}
+			
+			*/
+		
+/* Vùng chứa */
+#overlay-container {
+    position: absolute;
+    top: 20px;
+    left: 0;
+    width: 100%;
+    overflow: hidden;
+    pointer-events: none;
+}
 
-    </style>
+/* Dòng chữ */
+#viewer-overlay {
+    color: #CC0000;
+    font-weight: bold;
+    font-family: sans-serif;
+    font-size: 40px;
+    text-shadow: 1px 1px 2px #000;
+    display: inline-block;
+    white-space: nowrap;
+    will-change: transform; /* Tối ưu hiệu suất */
+}
+</style>
+
+<div id="overlay-container">
+    <div id="viewer-overlay">Ca Sỹ hát</div>
+</div>
+
+<script>
+function setMarquee() {
+    const textEl = document.getElementById("viewer-overlay");
+    const screenWidth = window.innerWidth;
+    const textWidth = textEl.offsetWidth;
+
+    // Khoảng cách chữ di chuyển (từ mép phải chạm mép trái và ngược lại)
+    const maxMove = screenWidth - textWidth;
+
+    // Nếu chữ dài hơn màn hình thì dịch chuyển sẽ âm (chạy sang trái), ngược lại chạy sang phải
+    const distance = maxMove < 0 ? maxMove : 0;
+
+    // Tốc độ tính theo độ dài dịch chuyển (càng dài chạy càng lâu)
+    const speed = Math.abs(distance) * 20; // 20ms mỗi px (bạn có thể chỉnh)
+
+    // Tạo animation động
+    textEl.style.animation = `marqueeAnim ${speed}ms linear infinite alternate`;
+
+    // Inject @keyframes động
+    const styleEl = document.createElement("style");
+    styleEl.innerHTML = `
+        @keyframes marqueeAnim {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(${distance}px); }
+        }
+    `;
+    document.head.appendChild(styleEl);
+}
+
+// Gọi khi load và khi resize
+window.addEventListener("load", setMarquee);
+window.addEventListener("resize", setMarquee);
+</script>
+	
 </head>
 <body>
     <div id="player"></div>
