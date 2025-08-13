@@ -169,74 +169,125 @@
         });
     </script>
 	
+	function showRewardMessage(item) {
+    // Kiểm tra xem video hiện tại có thông tin người thêm không
+    if (item && item.media.customData && item.media.customData.viewerName) {
+        const viewerName = item.media.customData.viewerName;
+        // Tạo một số ngẫu nhiên từ 90 đến 100
+        const score = Math.floor(Math.random() * 11) + 90;
+        
+        // Tạo nội dung thông báo 2 dòng
+        rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
+        
+        // Hiển thị thông báo
+        rewardOverlay.style.opacity = 1;
+        
+        // Tự động ẩn thông báo sau 4 giây
+        setTimeout(() => {
+            rewardOverlay.style.opacity = 0;
+        }, 4000);
+    }
+}
+
 	
 </head>
 <body>
-    <div id="player"></div>
-    
+    <cast-media-player></cast-media-player>
+
     <div id="overlay-container">
-        <div id="viewer-overlay"></div>
+        <div id="viewer-overlay" class="overlay-text"></div>
     </div>
+    
+    <div id="next-song-notification" class="overlay-text"></div>
 
     <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-    
+
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
         const viewerOverlay = document.getElementById('viewer-overlay');
-        let ytPlayer;
+        const nextSongNotification = document.getElementById('next-song-notification');
 
-        const tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        // Biến để quản lý bộ đếm thời gian
+        let timeCheckInterval = null;
+        let notificationShown = false; // Cờ để đảm bảo thông báo chỉ hiện 1 lần
 
-        window.onYouTubeIframeAPIReady = function() {
-            ytPlayer = new YT.Player('player', {
-                height: '100%',
-                width: '100%',
-                playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
-                events: {
-                    'onStateChange': onPlayerStateChange
+        // Lắng nghe các sự kiện để quản lý bộ đếm
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_STATE_CHANGED, 
+            (event) => {
+                // Nếu video đang phát, bắt đầu kiểm tra thời gian
+                if (event.playerState === cast.framework.messages.PlayerState.PLAYING) {
+                    startCheckingTime();
+                } 
+                // Nếu video dừng, kết thúc hoặc không hoạt động, dừng kiểm tra
+                else {
+                    stopCheckingTime();
                 }
-            });
-        };
-
-        playerManager.setMessageInterceptor(
-            cast.framework.messages.MessageType.LOAD,
-            loadRequestData => {
-                const media = loadRequestData.media;
-                const videoId = media.contentId;
-                const customData = media.customData;
-
-                if (ytPlayer && videoId) {
-                    ytPlayer.loadVideoById({
-                        videoId: videoId,
-                        suggestedQuality: 'hd1080'
-                    });
-
-                    if (customData && customData.viewerName) {
-                        viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
-                        viewerOverlay.style.opacity = 1;
-                    } else {
-                        viewerOverlay.style.opacity = 0;
-                    }
-                }
-                
-                return null;
             }
         );
 
-        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PLAY, () => {
-             if (ytPlayer) ytPlayer.playVideo(); return null; 
+        playerManager.addEventListener(cast.framework.events.EventType.MEDIA_STATUS, (event) => {
+            // Cập nhật tên ca sỹ cho bài hát hiện tại
+            if (event.mediaStatus.media && event.mediaStatus.media.customData && event.mediaStatus.media.customData.viewerName) {
+                viewerOverlay.innerText = `Ca sỹ: ${event.mediaStatus.media.customData.viewerName}`;
+                viewerOverlay.style.display = 'inline-block';
+            } else {
+                viewerOverlay.style.display = 'none';
+            }
         });
-        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PAUSE, () => {
-            if (ytPlayer) ytPlayer.pauseVideo(); return null;
-        });
+		function onPlayerStateChange(event) {
+    // Kiểm tra xem video đã kết thúc chưa (YT.PlayerState.ENDED có giá trị là 0)
+    if (event.data === YT.PlayerState.ENDED) {
+        // Ẩn tên người thêm của video vừa kết thúc
+        viewerOverlay.style.opacity = 0;
+        
+        // Hiển thị thông báo khen thưởng cho video vừa kết thúc
+        showRewardMessage(currentItem);
 
-        function onPlayerStateChange(event) {
-            if (event.data === YT.PlayerState.ENDED) {
-                viewerOverlay.style.opacity = 0;
+        // Sau 5 giây, gửi một yêu cầu nội bộ để Cast SDK tự động phát bài tiếp theo.
+        // Cast SDK sẽ tự xử lý các chế độ lặp lại.
+        setTimeout(() => {
+            playerManager.sendLocalMediaRequest({type: 'QUEUE_NEXT'});
+        }, 5000);
+    }
+}
+
+        function startCheckingTime() {
+            // Dừng bộ đếm cũ nếu có
+            stopCheckingTime();
+            notificationShown = false; // Reset cờ
+            nextSongNotification.style.display = 'none'; // Ẩn thông báo cũ
+
+            // Bắt đầu một bộ đếm mới, chạy mỗi giây
+            timeCheckInterval = setInterval(() => {
+                const currentTime = playerManager.getCurrentTimeSec();
+                const duration = playerManager.getDurationSec();
+
+                // Nếu thời gian còn lại <= 5 giây và thông báo chưa được hiển thị
+                if (duration > 0 && (duration - currentTime <= 5) && !notificationShown) {
+                    notificationShown = true; // Đánh dấu là đã hiển thị
+                    
+                    // Lấy thông tin bài hát tiếp theo từ hàng đợi
+                    const queueManager = playerManager.getQueueManager();
+                    const nextItem = queueManager.getNextItem();
+                    
+                    if (nextItem) {
+                        const nextTitle = nextItem.media.metadata.title;
+                        const nextViewer = nextItem.media.customData.viewerName;
+                        nextSongNotification.innerText = `Tiếp theo: ${nextTitle} (Ca sỹ: ${nextViewer})`;
+                        nextSongNotification.style.display = 'inline-block';
+                    }
+                    
+                    stopCheckingTime(); // Dừng kiểm tra sau khi đã hiển thị
+                }
+            }, 1000); // 1000ms = 1 giây
+        }
+
+        function stopCheckingTime() {
+            if (timeCheckInterval) {
+                clearInterval(timeCheckInterval);
+                timeCheckInterval = null;
             }
         }
 
