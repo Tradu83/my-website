@@ -4,147 +4,128 @@
     <meta charset="UTF-8">
     <title>Chiếu YouTube Receiver</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
-        #player { width: 100vw; height: 100vh; }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        #player {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Vùng chứa cho dòng chữ chạy */
+        #overlay-container {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            overflow: hidden; /* Bắt buộc để hiệu ứng chạy đúng */
+            pointer-events: none; /* Cho phép click xuyên qua */
+        }
+
+        /* CSS cho dòng chữ "Ca Sỹ hát" */
         #viewer-overlay {
-            position: absolute; top: 20px; left: 20px;
-            background-color: rgba(0, 0, 0, 0.7); color: #CC0000; font-weight: bold;
-            padding: 10px 20px; border-radius: 8px; font-family: sans-serif; font-size: 24px;
-            text-shadow: 2px 2px 4px #000;
+            /* Màu sắc và font chữ */
+            color: #CC0000; /* Màu đỏ đậm */
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 40px;
+            text-shadow: 1px 1px 2px #000; /* Thêm bóng để chữ nổi bật hơn */
+
+            /* Thuộc tính cho animation */
+            display: inline-block; /* Cho phép đo chiều rộng thực của chữ */
+            white-space: nowrap; /* Ngăn chữ xuống dòng */
+            padding-left: 100%; /* Đẩy chữ ra khỏi màn hình bên phải để bắt đầu */
+            
+            /* Khai báo animation */
+            animation-name: marquee;
+            animation-duration: 15s; /* Tốc độ chạy, bạn có thể thay đổi */
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
         }
-        #reward-overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.85); color: #FF0000; font-weight: bold;
-            font-size: 48px; padding: 30px 60px; border-radius: 15px;
-            opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center; z-index: 1000;
-        }
+
+        /* Định nghĩa animation chữ chạy qua lại */
+			@keyframes marquee {
+			0%   { transform: translateX(0); }       /* Vị trí ban đầu */
+			50%  { transform: translateX(-100%); }   /* Chạy sang trái */
+			100% { transform: translateX(0); }       /* Quay lại bên phải */
+			}
+
     </style>
 </head>
 <body>
     <div id="player"></div>
-    <div id="viewer-overlay"></div>
-    <div id="reward-overlay"></div>
     
-    <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-    <script src="https://www.youtube.com/iframe_api"></script>
+    <div id="overlay-container">
+        <div id="viewer-overlay"></div>
+    </div>
 
+    <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
-        const queueManager = playerManager.getQueueManager();
         const viewerOverlay = document.getElementById('viewer-overlay');
-        const rewardOverlay = document.getElementById('reward-overlay');
-        
         let ytPlayer;
-        let isPlayerReady = false;
-        let pendingItemToPlay = null;
-        let currentItem = null;
 
-        // --- HÀM TRÍCH XUẤT VIDEO ID TỪ URL ---
-        function extractVideoIdFromUrl(url) {
-            if (!url) return null;
-            const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-            const match = url.match(regex);
-            return match ? match[1] : null;
-        }
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-        // --- KHỞI TẠO YOUTUBE PLAYER ---
         window.onYouTubeIframeAPIReady = function() {
             ytPlayer = new YT.Player('player', {
-                height: '100%', width: '100%',
+                height: '100%',
+                width: '100%',
                 playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
                 events: {
-                    'onReady': onPlayerReady,
                     'onStateChange': onPlayerStateChange
                 }
             });
         };
 
-        function onPlayerReady() {
-            isPlayerReady = true;
-            if (pendingItemToPlay) {
-                playMediaItem(pendingItemToPlay);
-                pendingItemToPlay = null;
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            loadRequestData => {
+                const media = loadRequestData.media;
+                const videoId = media.contentId;
+                const customData = media.customData;
+
+                if (ytPlayer && videoId) {
+                    ytPlayer.loadVideoById({
+                        videoId: videoId,
+                        suggestedQuality: 'hd1080'
+                    });
+
+                    if (customData && customData.viewerName) {
+                        viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
+                        viewerOverlay.style.opacity = 1;
+                    } else {
+                        viewerOverlay.style.opacity = 0;
+                    }
+                }
+                
+                return null;
             }
-        }
-        
-        // --- HÀM PHÁT VIDEO TRUNG TÂM ---
-        function playMediaItem(item) {
-            if (!item) return;
+        );
 
-            if (!isPlayerReady) {
-                pendingItemToPlay = item;
-                return;
-            }
+        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PLAY, () => {
+             if (ytPlayer) ytPlayer.playVideo(); return null; 
+        });
+        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PAUSE, () => {
+            if (ytPlayer) ytPlayer.pauseVideo(); return null;
+        });
 
-            currentItem = item;
-            const url = item.media.contentId;
-            // SỬA LỖI: Trích xuất ID từ URL trước khi phát
-            const videoId = extractVideoIdFromUrl(url);
-
-            if (videoId) {
-                ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
-            }
-
-            const customData = item.media.customData;
-            if (customData && customData.viewerName) {
-                viewerOverlay.innerText = `Ca sỹ trình bày: ${customData.viewerName}`;
-                viewerOverlay.style.opacity = 1;
-            } else {
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
                 viewerOverlay.style.opacity = 0;
             }
         }
-        
-      function showRewardMessage(item) {
-    // Kiểm tra xem video hiện tại có thông tin người thêm không
-    if (item && item.media.customData && item.media.customData.viewerName) {
-        const viewerName = item.media.customData.viewerName;
-        // Tạo một số ngẫu nhiên từ 90 đến 100
-        const score = Math.floor(Math.random() * 11) + 90;
-        
-        // Tạo nội dung thông báo 2 dòng
-        rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
-        
-        // Hiển thị thông báo
-        rewardOverlay.style.opacity = 1;
-        
-        // Tự động ẩn thông báo sau 4 giây
-        setTimeout(() => {
-            rewardOverlay.style.opacity = 0;
-        }, 4000);
-    }
-}
-        function onPlayerStateChange(event) {
-    // Kiểm tra xem video đã kết thúc chưa (YT.PlayerState.ENDED có giá trị là 0)
-    if (event.data === YT.PlayerState.ENDED) {
-        // Ẩn tên người thêm của video vừa kết thúc
-        viewerOverlay.style.opacity = 0;
-        
-        // Hiển thị thông báo khen thưởng cho video vừa kết thúc
-        showRewardMessage(currentItem);
-
-        // Sau 5 giây, gửi một yêu cầu nội bộ để Cast SDK tự động phát bài tiếp theo.
-        // Cast SDK sẽ tự xử lý các chế độ lặp lại.
-        setTimeout(() => {
-            playerManager.sendLocalMediaRequest({type: 'QUEUE_NEXT'});
-        }, 5000);
-    }
-}
-
-        // --- LẮNG NGHE LỆNH TỪ ĐIỆN THOẠI ---
-        playerManager.addEventListener(
-            cast.framework.events.EventType.MEDIA_STATUS, (event) => {
-                const mediaStatus = event.mediaStatus;
-                if (mediaStatus && mediaStatus.currentItemId) {
-                    if (!currentItem || currentItem.itemId !== mediaStatus.currentItemId) {
-                        const newItem = queueManager.getItemById(mediaStatus.currentItemId);
-                        if (newItem) {
-                            playMediaItem(newItem);
-                        }
-                    }
-                }
-            }
-        );
 
         const options = new cast.framework.CastReceiverOptions();
         options.disableIdleTimeout = true;
