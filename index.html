@@ -2,41 +2,25 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Chiếu YouTube Receiver (Debug Mode)</title>
+    <title>Chiếu YouTube Receiver</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
         #player { width: 100vw; height: 100vh; }
         #viewer-overlay {
-            position: absolute; bottom: 10%; left: 20px; z-index: 100;
+            position: absolute; bottom: 10%; left: 20px;
             background-color: rgba(0, 0, 0, 0.7); color: #FFF; padding: 10px 20px;
             border-radius: 8px; font-family: sans-serif; font-size: 24px;
             opacity: 0; transition: opacity 0.5s ease-in-out;
-        }
-        /* Vùng hiển thị thông tin debug */
-        #debug-overlay {
-            position: absolute; top: 20px; left: 20px; z-index: 101;
-            background-color: rgba(0, 0, 0, 0.7); color: #0F0; /* Chữ xanh lá */
-            padding: 15px; border-radius: 8px; font-family: monospace; font-size: 16px;
-            max-width: 80%;
         }
     </style>
 </head>
 <body>
     <div id="player"></div>
     <div id="viewer-overlay"></div>
-    <div id="debug-overlay">Initializing...</div>
 
     <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     
     <script>
-        const debugOverlay = document.getElementById('debug-overlay');
-        function debugLog(message) {
-            console.log(message);
-            debugOverlay.innerText = `[LOG] ${message}`;
-        }
-
-        debugLog("Receiver script started.");
-
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
         const viewerOverlay = document.getElementById('viewer-overlay');
@@ -46,56 +30,35 @@
         tag.src = "https://www.youtube.com/iframe_api";
         const firstScriptTag = document.getElementsByTagName('script')[0];
         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-        debugLog("YouTube IFrame API script requested.");
 
         window.onYouTubeIframeAPIReady = function() {
-            debugLog("EVENT: onYouTubeIframeAPIReady fired.");
             ytPlayer = new YT.Player('player', {
                 height: '100%',
                 width: '100%',
                 playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
                 events: {
-                    'onReady': onPlayerReady,
-                    'onStateChange': onPlayerStateChange,
-                    'onError': onPlayerError
+                    'onStateChange': onPlayerStateChange
                 }
             });
         };
 
-        function onPlayerReady(event) {
-            debugLog("EVENT: YouTube Player is Ready.");
-        }
-
-        function onPlayerError(event) {
-            debugLog(`ERROR: YouTube Player Error - Code: ${event.data}`);
-        }
-
-        function onPlayerStateChange(event) {
-            const stateMap = { '-1': 'Unstarted', '0': 'Ended', '1': 'Playing', '2': 'Paused', '3': 'Buffering', '5': 'Cued' };
-            debugLog(`EVENT: Player state changed to: ${stateMap[event.data] || 'Unknown'}`);
-            if (event.data === YT.PlayerState.ENDED) {
-                viewerOverlay.style.opacity = 0;
-            }
-        }
-
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
             loadRequestData => {
-                debugLog("INTERCEPTOR: LOAD message received.");
                 const media = loadRequestData.media;
-                if (!media) {
-                    debugLog("ERROR: LOAD message has no media object.");
-                    return null;
-                }
-                
                 const videoId = media.contentId;
                 const customData = media.customData;
-                debugLog(`- Video ID received: ${videoId}`);
-                debugLog(`- Custom Data: ${JSON.stringify(customData)}`);
 
-                if (ytPlayer && videoId && typeof ytPlayer.loadVideoById === 'function') {
-                    debugLog("ACTION: Calling ytPlayer.loadVideoById...");
-                    ytPlayer.loadVideoById(videoId);
+                if (ytPlayer && videoId) {
+                    // === THAY ĐỔI Ở ĐÂY ===
+                    // Thêm 'suggestedQuality' để gợi ý cho YouTube phát ở chất lượng cao.
+                    // 'hd1080' cho Full HD. Bạn cũng có thể dùng 'hd720' cho HD.
+                    // Lưu ý: YouTube vẫn có thể tự giảm chất lượng nếu mạng yếu.
+                    ytPlayer.loadVideoById({
+                        videoId: videoId,
+                        suggestedQuality: 'hd1080'
+                    });
+                    // ======================
 
                     if (customData && customData.viewerName) {
                         viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
@@ -103,17 +66,26 @@
                     } else {
                         viewerOverlay.style.opacity = 0;
                     }
-                } else {
-                    debugLog("ERROR: ytPlayer is not ready or videoId is missing.");
                 }
                 
                 return null;
             }
         );
-        
-        // Bắt đầu receiver
+
+        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PLAY, () => {
+             if (ytPlayer) ytPlayer.playVideo(); return null; 
+        });
+        playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PAUSE, () => {
+            if (ytPlayer) ytPlayer.pauseVideo(); return null;
+        });
+
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
+                viewerOverlay.style.opacity = 0;
+            }
+        }
+
         context.start();
-        debugLog("Cast Receiver context started. Waiting for connection...");
     </script>
 </body>
 </html>
