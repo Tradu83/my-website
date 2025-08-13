@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <title>Custom CAF YouTube Receiver</title>
+  <title>Custom YouTube Cast Receiver</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body {
@@ -47,7 +47,7 @@
     }
   </style>
 
-  <!-- Cast CAF -->
+  <!-- CAF Receiver -->
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <!-- YouTube IFrame API -->
   <script>
@@ -58,7 +58,7 @@
     })();
   </script>
   <script>
-    // Chữ chạy qua lại
+    // ===== Chữ chạy qua lại =====
     (function () {
       let styleEl;
       function injectKeyframes(distance) {
@@ -102,8 +102,6 @@
 
   <script>
     const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
-    const queueManager = playerManager.getQueueManager();
     const viewerOverlay = document.getElementById('viewer-overlay');
     const rewardOverlay = document.getElementById('reward-overlay');
 
@@ -112,15 +110,15 @@
     let rewardShown = false;
     let rewardCheckTimer = null;
 
-    // Pending load nếu player chưa sẵn sàng
-    let pendingVideoId = null;
-    let pendingStartTime = 0;
+    // Queue tự quản
+    let myQueue = [];
+    let currentIndex = 0;
 
-    // Hàm khen thưởng
+    // Hàm hiển thị thông báo khen thưởng
     function showRewardMessage(item) {
-      if (item && item.media && item.media.customData && item.media.customData.viewerName) {
-        const viewerName = item.media.customData.viewerName;
-        const score = Math.floor(Math.random() * 11) + 90;
+      if (item && item.viewerName) {
+        const viewerName = item.viewerName;
+        const score = Math.floor(Math.random() * 11) + 90; // 90-100
         rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện rất tốt!<br>${score} điểm khen ngợi.`;
         rewardOverlay.style.display = 'block';
         setTimeout(() => { rewardOverlay.style.display = 'none'; }, 4000);
@@ -136,12 +134,13 @@
           suggestedQuality: 'hd1080'
         });
       } else {
-        pendingVideoId = videoId;
-        pendingStartTime = startTimeSec;
+        // Nếu player chưa ready, lưu tạm
+        window.pendingVideoId = videoId;
+        window.pendingStartTime = startTimeSec;
       }
     }
 
-    // YouTube Player sẵn sàng
+    // ===== YouTube Player Ready =====
     window.onYouTubeIframeAPIReady = function() {
       ytPlayer = new YT.Player('player', {
         height: '100%', width: '100%',
@@ -152,10 +151,10 @@
         events: {
           onReady: () => {
             ready = true;
-            if (pendingVideoId) {
-              loadVideoId(pendingVideoId, pendingStartTime);
-              pendingVideoId = null;
-              pendingStartTime = 0;
+            if (window.pendingVideoId) {
+              loadVideoId(window.pendingVideoId, window.pendingStartTime || 0);
+              window.pendingVideoId = null;
+              window.pendingStartTime = 0;
             }
           },
           onStateChange: onYTStateChange
@@ -163,6 +162,7 @@
       });
     };
 
+    // ===== Xử lý trạng thái YouTube =====
     function onYTStateChange(event) {
       if (event.data === YT.PlayerState.PLAYING) {
         clearInterval(rewardCheckTimer);
@@ -170,8 +170,7 @@
           const duration = ytPlayer.getDuration();
           const current = ytPlayer.getCurrentTime();
           if (!rewardShown && duration - current <= 5) {
-            const currentItem = queueManager.getCurrentItem();
-            showRewardMessage(currentItem);
+            showRewardMessage(myQueue[currentIndex]);
             rewardShown = true;
           }
         }, 1000);
@@ -179,9 +178,10 @@
       if (event.data === YT.PlayerState.ENDED) {
         clearInterval(rewardCheckTimer);
         rewardShown = false;
-        const nextItem = queueManager.getNextItem();
-        if (nextItem && nextItem.media) {
-          playQueueItem(nextItem);
+        currentIndex++;
+        if (currentIndex < myQueue.length) {
+          updateOverlay(myQueue[currentIndex]);
+          loadVideoId(myQueue[currentIndex].videoId);
         }
       }
       if (event.data === YT.PlayerState.PAUSED) {
@@ -189,10 +189,10 @@
       }
     }
 
-    function updateOverlayFromMedia(media) {
-      const cd = (media && media.customData) || {};
-      if (cd.viewerName) {
-        viewerOverlay.textContent = `Ca sỹ trình bày: ${cd.viewerName}`;
+    // ===== Overlay chữ chạy =====
+    function updateOverlay(item) {
+      if (item && item.viewerName) {
+        viewerOverlay.textContent = `Ca sỹ trình bày: ${item.viewerName}`;
         viewerOverlay.style.opacity = 1;
         setTimeout(setMarquee, 0);
       } else {
@@ -202,58 +202,49 @@
       }
     }
 
-    function playQueueItem(item, seekTimeSec) {
-      if (!item || !item.media) return;
-      const videoId = item.media.contentId;
-      updateOverlayFromMedia(item.media);
-      loadVideoId(videoId, seekTimeSec || 0);
-      queueManager.setCurrentItem(item.itemId);
-      rewardShown = false;
-    }
+    // ===== Nhận lệnh từ app =====
+    context.addCustomMessageListener('urn:x-cast:com.myapp.queue', (event) => {
+      const data = event.data;
+      if (data.action === "replaceQueue") {
+        myQueue = data.queue || [];
+        currentIndex = data.startIndex || 0;
+        if (myQueue[currentIndex]) {
+          updateOverlay(myQueue[currentIndex]);
+          loadVideoId(myQueue[currentIndex].videoId);
+        }
+      }
+      if (data.action === "appendQueue") {
+        myQueue.push(...(data.queue || []));
+      }
+    });
 
-    // Nhận lệnh từ app
-    playerManager.setMessageInterceptor(
-      cast.framework.messages.MessageType.LOAD,
-      loadRequestData => {
-        const media = loadRequestData.media || {};
-        const videoId = media.contentId;
-        const startTime = (loadRequestData.currentTime || 0);
-        updateOverlayFromMedia(media);
-        loadVideoId(videoId, startTime);
-        rewardShown = false;
-        return null;
+    context.addCustomMessageListener('urn:x-cast:com.myapp.control', (event) => {
+      const cmd = event.data;
+      if (!ytPlayer) return;
+      switch(cmd.action) {
+        case "play": ytPlayer.playVideo(); break;
+        case "pause": ytPlayer.pauseVideo(); break;
+        case "seek": ytPlayer.seekTo(cmd.time || 0, true); break;
+        case "next":
+          if (currentIndex < myQueue.length - 1) {
+            currentIndex++;
+            updateOverlay(myQueue[currentIndex]);
+            loadVideoId(myQueue[currentIndex].videoId);
+          }
+          break;
+        case "prev":
+          if (currentIndex > 0) {
+            currentIndex--;
+            updateOverlay(myQueue[currentIndex]);
+            loadVideoId(myQueue[currentIndex].videoId);
+          }
+          break;
       }
-    );
-    playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PLAY, () => { ytPlayer?.playVideo(); return null; });
-    playerManager.setMessageInterceptor(cast.framework.messages.MessageType.PAUSE, () => { ytPlayer?.pauseVideo(); return null; });
-    playerManager.setMessageInterceptor(cast.framework.messages.MessageType.SEEK, seekData => {
-      if (ytPlayer && typeof seekData.currentTime === 'number') {
-        ytPlayer.seekTo(seekData.currentTime, true);
-      }
-      return null;
     });
-    playerManager.setMessageInterceptor(cast.framework.messages.MessageType.QUEUE_NEXT, () => {
-      const nextItem = queueManager.getNextItem();
-      if (nextItem) playQueueItem(nextItem);
-      return null;
-    });
-    playerManager.setMessageInterceptor(cast.framework.messages.MessageType.QUEUE_PREV, () => {
-      const prevItem = queueManager.getPrevItem();
-      if (prevItem) playQueueItem(prevItem);
-      return null;
-    });
-    playerManager.setMessageInterceptor(cast.framework.messages.MessageType.STOP, () => { ytPlayer?.stopVideo(); return null; });
 
     const options = new cast.framework.CastReceiverOptions();
     options.disableIdleTimeout = true;
     context.start(options);
-
-    window.addEventListener('load', () => {
-      if (viewerOverlay.textContent.trim() !== "") {
-        viewerOverlay.style.opacity = 1;
-        setMarquee();
-      }
-    });
   </script>
 </body>
 </html>
