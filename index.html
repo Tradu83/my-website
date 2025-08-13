@@ -6,36 +6,23 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
         #player { width: 100vw; height: 100vh; }
-
-        /* CSS cho tên người thêm (giữ lại hiệu ứng chữ chạy) */
-        #overlay-container {
-            position: absolute; top: 20px; left: 0; width: 100%;
-            overflow: hidden; pointer-events: none;
-        }
         #viewer-overlay {
-            color: #CC0000; font-weight: bold; font-family: sans-serif; font-size: 24px;
-            text-shadow: 2px 2px 4px #000; display: inline-block;
-            white-space: nowrap; padding-left: 100%;
-            animation: marquee 15s linear infinite;
+            position: absolute; top: 20px; left: 20px;
+            background-color: rgba(0, 0, 0, 0.7); color: #CC0000; font-weight: bold;
+            padding: 10px 20px; border-radius: 8px; font-family: sans-serif; font-size: 24px;
+            text-shadow: 2px 2px 4px #000;
         }
-        @keyframes marquee {
-            0%   { transform: translateX(0); }
-            100% { transform: translateX(-100%); }
-        }
-
-        /* CSS cho thông báo khen thưởng */
         #reward-overlay {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background-color: rgba(0, 0, 0, 0.85); color: #FF0000; font-weight: bold;
             font-size: 48px; padding: 30px 60px; border-radius: 15px;
-            opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
-            z-index: 1000;
+            opacity: 0; transition: opacity: 0.5s ease-in-out; text-align: center; z-index: 1000;
         }
     </style>
 </head>
 <body>
     <div id="player"></div>
-    <div id="overlay-container"><div id="viewer-overlay"></div></div>
+    <div id="viewer-overlay"></div>
     <div id="reward-overlay"></div>
     
     <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -44,60 +31,45 @@
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
+        const queueManager = playerManager.getQueueManager();
         const viewerOverlay = document.getElementById('viewer-overlay');
         const rewardOverlay = document.getElementById('reward-overlay');
         let ytPlayer;
 
-        // --- CÁC BIẾN QUẢN LÝ TRẠNG THÁI ---
-        let isPlayerReady = false;
-        let pendingMedia = null;
-        let currentItem = null;
+        let currentMediaItem = null;
         let rewardTimeout;
 
-        // --- KHỞI TẠO YOUTUBE PLAYER ---
         window.onYouTubeIframeAPIReady = function() {
             ytPlayer = new YT.Player('player', {
                 height: '100%', width: '100%',
                 playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
-                events: {
-                    'onReady': onPlayerReady,
-                    'onStateChange': onPlayerStateChange
-                }
+                events: { 'onStateChange': onPlayerStateChange }
             });
         };
 
-        function onPlayerReady() {
-            isPlayerReady = true;
-            if (pendingMedia) {
-                playMedia(pendingMedia);
-                pendingMedia = null;
-            }
-        }
-        
-        // --- HÀM PHÁT VIDEO TRUNG TÂM ---
-        function playMedia(media) {
-            if (!media) return;
+        function playMediaItem(item) {
+            if (!item || !ytPlayer || !ytPlayer.loadVideoById) return;
 
-            currentItem = media; // Lưu lại video đang phát
-            const videoId = media.contentId;
-            const customData = media.customData;
+            currentMediaItem = item;
+            // Trích xuất ID từ URL đầy đủ
+            const url = item.media.contentId;
+            const videoId = url.split('v=')[1] ? url.split('v=')[1].split('&')[0] : null;
 
-            if (isPlayerReady && ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+            if (videoId) {
                 ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
-                
-                if (customData && customData.viewerName) {
-                    viewerOverlay.innerText = `Ca sỹ ${customData.viewerName} đang thể hiện`;
-                    viewerOverlay.style.opacity = 1;
-                    viewerOverlay.parentElement.style.opacity = 1;
-                }
+            }
+
+            const customData = item.media.customData;
+            if (customData && customData.viewerName) {
+                viewerOverlay.innerText = `Người thêm: ${customData.viewerName}`;
+                viewerOverlay.style.opacity = 1;
             } else {
-                pendingMedia = media; // Nếu player chưa sẵn sàng, lưu lại để xử lý sau
+                viewerOverlay.style.opacity = 0;
             }
         }
         
-        // --- HÀM HIỂN THỊ THÔNG BÁO ---
         function showRewardMessage(item) {
-            if (item && item.media.customData && item.media.customData.viewerName) {
+             if (item && item.media.customData && item.media.customData.viewerName) {
                 const viewerName = item.media.customData.viewerName;
                 const score = Math.floor(Math.random() * 11) + 90;
                 rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
@@ -107,51 +79,30 @@
             }
         }
 
-        // --- XỬ LÝ KHI VIDEO KẾT THÚC ---
-        function onPlayerStateChange(event) {
-            if (event.data === YT.PlayerState.ENDED) {
-                viewerOverlay.style.opacity = 0;
-                viewerOverlay.parentElement.style.opacity = 0;
-                // Gửi một tin nhắn tùy chỉnh về cho ứng dụng Android báo rằng video đã kết thúc
-                // Điều này cho phép ViewModel quyết định bài tiếp theo
-                try {
-                    const castSession = context.getCastSessions()[0];
-                    if (castSession) {
-                        castSession.sendMessage('urn:x-cast:com.tranduyen.chieuyoutube.custom', { type: 'VIDEO_ENDED' });
+        // Lắng nghe sự thay đổi media từ Cast SDK
+        playerManager.addEventListener(
+            cast.framework.events.EventType.MEDIA_STATUS, (event) => {
+                if(event.mediaStatus && event.mediaStatus.currentItemId) {
+                    const currentItemFromSDK = queueManager.getItemById(event.mediaStatus.currentItemId);
+                    if(currentItemFromSDK && (!currentMediaItem || currentItemFromSDK.itemId !== currentMediaItem.itemId)) {
+                        playMediaItem(currentItemFromSDK);
                     }
-                } catch(e) { console.error(e); }
-            }
-        }
-        
-        // --- CAN THIỆP CÁC LỆNH TỪ ANDROID ---
-        // Chúng ta sẽ tự quản lý hàng đợi, nên không cần các interceptor phức tạp nữa
-        playerManager.setMessageInterceptor(
-            cast.framework.messages.MessageType.LOAD,
-            loadRequestData => {
-                const mediaToPlay = loadRequestData.media;
-                playMedia(mediaToPlay);
-                return null; // Trả về null để ngăn trình phát mặc định
+                }
             }
         );
 
-        // --- KHỞI ĐỘNG RECEIVER ---
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
+                viewerOverlay.style.opacity = 0;
+                // Không cần tự chuyển bài ở đây, Cast SDK sẽ tự gửi lệnh QUEUE_NEXT
+                // và chúng ta sẽ bắt được nó qua event listener ở trên
+                showRewardMessage(currentMediaItem);
+            }
+        }
+
         const options = new cast.framework.CastReceiverOptions();
         options.disableIdleTimeout = true;
-        // Thêm namespace tùy chỉnh để nhận/gửi tin nhắn
-        options.customNamespaces = { 'urn:x-cast:com.tranduyen.chieuyoutube.custom': cast.framework.system.MessageType.JSON };
         context.start(options);
-        
-        // Lắng nghe các tin nhắn tùy chỉnh từ Android
-        context.addCustomMessageListener('urn:x-cast:com.tranduyen.chieuyoutube.custom', (customEvent) => {
-            const data = customEvent.data;
-            if (data.type === 'PLAY_NEXT' && data.media) {
-                 showRewardMessage(currentItem);
-                 setTimeout(() => { playMedia(data.media); }, 5000);
-            } else if (data.type === 'JUMP_TO' && data.media) {
-                 playMedia(data.media);
-            }
-        });
-
     </script>
 </body>
 </html>
