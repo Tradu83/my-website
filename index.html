@@ -2,100 +2,132 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Chiếu YouTube Receiver (Debug)</title>
+    <title>Chiếu YouTube Receiver</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
         #player { width: 100vw; height: 100vh; }
-        #debug-overlay {
-            position: absolute; top: 10px; left: 10px; z-index: 1000;
-            background-color: rgba(0,0,0,0.7); color: #0f0; font-family: monospace;
-            font-size: 16px; padding: 10px; border-radius: 5px; max-width: 95%;
+        #viewer-overlay {
+            position: absolute; top: 20px; left: 20px;
+            background-color: rgba(0, 0, 0, 0.7); color: #CC0000; font-weight: bold;
+            padding: 10px 20px; border-radius: 8px; font-family: sans-serif; font-size: 24px;
+            text-shadow: 2px 2px 4px #000;
+        }
+        #reward-overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85); color: #FF0000; font-weight: bold;
+            font-size: 48px; padding: 30px 60px; border-radius: 15px;
+            opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center; z-index: 1000;
         }
     </style>
 </head>
 <body>
     <div id="player"></div>
-    <div id="debug-overlay"></div>
-
+    <div id="viewer-overlay"></div>
+    <div id="reward-overlay"></div>
+    
+    <script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 
     <script>
-        const debugOverlay = document.getElementById('debug-overlay');
-        function debugLog(message) {
-            console.log(message);
-            // Hiển thị tối đa 5 dòng log gần nhất trên màn hình
-            let lines = debugOverlay.innerHTML.split('<br>').slice(-4);
-            lines.push(message);
-            debugOverlay.innerHTML = lines.join('<br>');
-        }
-
-        debugLog("1. Receiver script started.");
-
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
+        const queueManager = playerManager.getQueueManager();
+        const viewerOverlay = document.getElementById('viewer-overlay');
+        const rewardOverlay = document.getElementById('reward-overlay');
         
         let ytPlayer;
         let isPlayerReady = false;
-        let pendingMediaInfo = null; // Biến quan trọng để lưu yêu cầu đang chờ
+        let pendingItemToPlay = null; // Lưu lại video đang chờ phát
+        let currentItem = null; // Lưu video đang phát
 
-        // Hàm này sẽ được gọi khi script của YouTube IFrame API tải xong
+        // --- KHỞI TẠO YOUTUBE PLAYER ---
         window.onYouTubeIframeAPIReady = function() {
-            debugLog("2. YouTube IFrame API is ready. Creating YT.Player...");
             ytPlayer = new YT.Player('player', {
                 height: '100%', width: '100%',
-                playerVars: { 'autoplay': 1, 'controls': 0 },
+                playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
                 events: {
-                    'onReady': onPlayerReady
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange
                 }
             });
         };
 
-        // Hàm này được gọi khi trình phát YouTube đã sẵn sàng nhận lệnh
-        function onPlayerReady(event) {
-            debugLog("3. YouTube Player is ready (onReady event fired).");
+        // KHI PLAYER SẴN SÀNG, KIỂM TRA VIDEO ĐANG CHỜ
+        function onPlayerReady() {
             isPlayerReady = true;
-            // Kiểm tra xem có yêu cầu nào đang chờ không
-            if (pendingMediaInfo) {
-                debugLog("4. A pending media request was found. Playing it now...");
-                playMedia(pendingMediaInfo);
-                pendingMediaInfo = null; // Xóa yêu cầu đã xử lý
+            if (pendingItemToPlay) {
+                playMediaItem(pendingItemToPlay);
+                pendingItemToPlay = null;
             }
         }
         
-        // Hàm trung tâm để phát video
-        function playMedia(mediaInfo) {
-            const videoId = mediaInfo.contentId;
-            debugLog(`5. Calling loadVideoById with ID: ${videoId}`);
-            ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+        // HÀM TRUNG TÂM ĐỂ PHÁT VIDEO
+        function playMediaItem(item) {
+            if (!item) return;
+
+            if (!isPlayerReady || !ytPlayer || typeof ytPlayer.loadVideoById !== 'function') {
+                pendingItemToPlay = item; // Nếu player chưa sẵn sàng, lưu lại và chờ
+                return;
+            }
+
+            currentItem = item;
+            const url = item.media.contentId;
+            const videoId = url.split('v=')[1] ? url.split('v=')[1].split('&')[0] : null;
+
+            if (videoId) {
+                ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+            }
+
+            const customData = item.media.customData;
+            if (customData && customData.viewerName) {
+                viewerOverlay.innerText = `Ca Sỹ Thể Hiện: ${customData.viewerName}`;
+                viewerOverlay.style.opacity = 1;
+            } else {
+                viewerOverlay.style.opacity = 0;
+            }
+        }
+        
+        // HÀM HIỂN THỊ THÔNG BÁO
+        function showRewardMessage(item) {
+             if (item && item.media.customData && item.media.customData.viewerName) {
+                const viewerName = item.media.customData.viewerName;
+                const score = Math.floor(Math.random() * 11) + 90;
+                rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
+                rewardOverlay.style.opacity = 1;
+                setTimeout(() => { rewardOverlay.style.opacity = 0; }, 4000);
+            }
         }
 
-        // Can thiệp vào lệnh LOAD từ điện thoại
-        playerManager.setMessageInterceptor(
-            cast.framework.messages.MessageType.LOAD,
-            loadRequestData => {
-                debugLog("A. LOAD message received from sender.");
-                const media = loadRequestData.media;
-                if (!media) {
-                    debugLog("ERROR: Media object is missing in LOAD request.");
-                    return null;
-                }
+        // KHI VIDEO KẾT THÚC, TỰ ĐỘNG CHUYỂN BÀI
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
+                viewerOverlay.style.opacity = 0;
+                showRewardMessage(currentItem);
+                setTimeout(() => {
+                    // Yêu cầu SDK tự động phát bài tiếp theo
+                    playerManager.sendLocalMediaRequest({type: 'QUEUE_NEXT'});
+                }, 5000); // Chờ 5 giây
+            }
+        }
 
-                if (isPlayerReady) {
-                    debugLog("B. Player is already ready. Playing immediately.");
-                    playMedia(media);
-                } else {
-                    debugLog("C. Player is NOT ready yet. Storing media request to play later.");
-                    pendingMediaInfo = media; // Lưu lại yêu cầu
+        // LẮNG NGHE CÁC LỆNH TỪ ĐIỆN THOẠI
+        playerManager.addEventListener(
+            cast.framework.events.EventType.MEDIA_STATUS, (event) => {
+                const mediaStatus = event.mediaStatus;
+                if (mediaStatus && mediaStatus.currentItemId) {
+                    if (!currentItem || currentItem.itemId !== mediaStatus.currentItemId) {
+                        const newItem = queueManager.getItemById(mediaStatus.currentItemId);
+                        if (newItem) {
+                            playMediaItem(newItem);
+                        }
+                    }
                 }
-                
-                return null; // Luôn trả về null để ngăn trình phát mặc định
             }
         );
 
-        // Khởi động receiver
-        context.start();
-
+        const options = new cast.framework.CastReceiverOptions();
+        options.disableIdleTimeout = true;
+        context.start(options);
     </script>
 </body>
 </html>
