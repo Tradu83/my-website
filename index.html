@@ -86,8 +86,15 @@
 
     let currentRepeatMode = cast.framework.messages.RepeatMode.OFF;
     let currentMediaItem = null;
+    let currentVideoId = null;
+
+    // Debug logging
+    function log(message) {
+        console.log('[YouTube Receiver]', message);
+    }
 
     window.onYouTubeIframeAPIReady = function() {
+        log('YouTube IFrame API ready');
         ytPlayer = new YT.Player('player', {
             height: '100%', width: '100%',
             playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
@@ -100,7 +107,12 @@
         currentMediaItem = item;
         const videoId = item.media.contentId;
         const customData = item.media.customData;
+        
+        log(`Playing video: ${videoId}`);
+        currentVideoId = videoId;
+        
         ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+        
         if (customData?.viewerName) {
             viewerOverlay.innerText = `Ca sỹ trình bày: ${customData.viewerName}`;
             viewerOverlay.style.opacity = 1;
@@ -118,6 +130,10 @@
             const media = loadRequestData.media;
             const videoId = media.contentId;
             const customData = media.customData || {};
+            
+            log(`Loading video: ${videoId}`);
+            currentVideoId = videoId;
+            
             if (ytPlayer && videoId) {
                 ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
             }
@@ -137,49 +153,108 @@
 
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.PLAY,
-        () => { ytPlayer?.playVideo(); return null; }
+        () => { 
+            log('Play command received');
+            ytPlayer?.playVideo(); 
+            return null; 
+        }
     );
+    
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.PAUSE,
-        () => { ytPlayer?.pauseVideo(); return null; }
+        () => { 
+            log('Pause command received');
+            ytPlayer?.pauseVideo(); 
+            return null; 
+        }
     );
 
     function onPlayerStateChange(event) {
+        log(`Player state changed: ${event.data}`);
         if (event.data === YT.PlayerState.ENDED) {
+            log('Video ended');
             viewerOverlay.style.opacity = 0;
             viewerOverlay.style.animation = "none";
-            handleQueueAdvance();
+            
+            // Show reward message before advancing
+            if (currentMediaItem?.media?.customData?.viewerName) {
+                showRewardMessage(currentMediaItem);
+            }
+            
+            // Delay advancing to allow reward message to show
+            setTimeout(() => {
+                handleQueueAdvance();
+            }, 1000);
+        } else if (event.data === YT.PlayerState.PLAYING) {
+            log('Video started playing');
+            sendCurrentStatus();
         }
     }
 
     function handleQueueAdvance() {
+        log(`Handling queue advance. Repeat mode: ${currentRepeatMode}`);
         if (currentRepeatMode === cast.framework.messages.RepeatMode.SINGLE) {
+            log('Repeating single video');
             ytPlayer.seekTo(0);
             ytPlayer.playVideo();
         } else {
             const nextItem = queueManager.getNextItem();
-            if (nextItem) playMediaItem(nextItem);
+            if (nextItem) {
+                log('Playing next item in queue');
+                playMediaItem(nextItem);
+            } else {
+                log('No next item in queue');
+            }
         }
     }
 
     // Nhận custom message từ app
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
+        log(`Received custom message: ${JSON.stringify(data)}`);
+        
         if (data.type === "setRepeatMode") {
             currentRepeatMode = data.mode;
             queueManager.setRepeatMode(currentRepeatMode);
+            log(`Repeat mode set to: ${currentRepeatMode}`);
+            sendCurrentStatus();
+        } else if (data.cmd === "playById") {
+            log(`Play by ID command: ${data.videoId}`);
+            // Find and play the specific video
+            const queue = queueManager.getQueue();
+            for (let i = 0; i < queue.length; i++) {
+                const item = queue[i];
+                if (item.media.contentId === data.videoId) {
+                    log(`Found video at index ${i}, jumping to it`);
+                    queueManager.jumpToItem(i);
+                    break;
+                }
+            }
+        } else if (data.cmd === "playNext") {
+            log('Play next command received');
+            const nextItem = queueManager.getNextItem();
+            if (nextItem) {
+                playMediaItem(nextItem);
+            }
+        } else if (data.event === "syncQueue") {
+            log('Sync queue command received');
+            // Queue sync is handled automatically by the framework
             sendCurrentStatus();
         }
     });
 
     function sendCurrentStatus() {
         const currentItem = queueManager.getCurrentItem();
-        const videoId = currentItem?.media?.contentId || null;
-        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, {
+        const videoId = currentItem?.media?.contentId || currentVideoId;
+        
+        const status = {
             type: "statusUpdate",
             repeatMode: currentRepeatMode,
             currentlyPlayingVideoId: videoId
-        });
+        };
+        
+        log(`Sending status: ${JSON.stringify(status)}`);
+        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, status);
     }
 
     function showRewardMessage(item) {
@@ -188,15 +263,24 @@
             const score = Math.floor(Math.random() * 11) + 90;
             rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
             rewardOverlay.style.opacity = 1;
-            setTimeout(() => { rewardOverlay.style.opacity = 0; }, 4000);
+            log(`Showing reward message for ${viewerName} with score ${score}`);
+            setTimeout(() => { 
+                rewardOverlay.style.opacity = 0; 
+                log('Reward message hidden');
+            }, 4000);
         }
     }
 
     const options = new cast.framework.CastReceiverOptions();
     options.disableIdleTimeout = true;
+    
+    // Add custom message listener before starting
     context.start(options);
+    
+    log('Cast receiver started');
 
     window.addEventListener('load', () => {
+        log('Page loaded');
         if (viewerOverlay.textContent.trim() !== "") {
             viewerOverlay.style.opacity = 1;
             setMarquee();
