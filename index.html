@@ -9,29 +9,13 @@
 			background-color: #000; overflow: hidden;
 		}
 		#player { width: 100vw; height: 100vh; }
-		/* Vùng chứa cho dòng chữ chạy */
-        #overlay-container {
-            position: absolute;
-            top: 20px;
-            left: 0;
-            width: 100%;
-            overflow: hidden;      /* Ẩn phần vượt khung */
-            pointer-events: none;  /* Cho phép click xuyên qua */
-            z-index: 2;            /* Hiển thị trên video */
-        }
-        /* Dòng chữ chạy */
-        #viewer-overlay {
-            color: #CC0000;
-            font-weight: bold;
-            font-family: sans-serif;
-            font-size: 40px;
-            text-shadow: 1px 1px 2px #000;
-            display: inline-block;
-            white-space: nowrap;
-            will-change: transform; /* Tối ưu hiệu suất */
-            opacity: 0;             /* Ẩn khi chưa có nội dung */
-        }
-		
+		#viewer-overlay {
+			position: absolute; top: 20px; left: 0; width: 100%;
+			color: #CC0000; font-weight: bold; font-family: sans-serif;
+			font-size: 40px; text-shadow: 1px 1px 2px #000;
+			text-align: center; opacity: 0; transition: opacity 0.5s;
+			z-index: 1000; pointer-events: none;
+		}
 		#reward-overlay {
 			position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
 			background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
@@ -40,50 +24,6 @@
 			text-align: center; z-index: 1000;
 		}
 	</style>
-    <script>
-        // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
-        (function () {
-            let styleEl;
-            function injectKeyframes(distance) {
-                if (!styleEl) {
-                    styleEl = document.createElement('style');
-                    styleEl.id = 'marquee-style';
-                    document.head.appendChild(styleEl);
-                }
-                styleEl.textContent = `
-                    @keyframes marqueeAnim {
-                        0% { transform: translateX(0); }
-                        100% { transform: translateX(${distance}px); }
-                    }
-                `;
-            }
-    
-            // Public để có thể gọi lại sau khi cập nhật nội dung
-            window.setMarquee = function () {
-                const textEl = document.getElementById('viewer-overlay');
-                if (!textEl) return;
-    
-                // đo kích thước thực
-                const screenWidth = window.innerWidth;
-                const textWidth = textEl.scrollWidth;
-    
-                // Khoảng di chuyển: dương nếu chữ ngắn hơn màn hình, âm nếu dài hơn
-                const distance = screenWidth - textWidth;
-    
-                // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
-                const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
-    
-                injectKeyframes(distance);
-                textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
-            };
-    
-            // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
-            window.addEventListener('resize', () => {
-                clearTimeout(window.__marqueeResizeTimer);
-                window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
-            });
-        })();
-        </script>
 </head>
 <body>
 
