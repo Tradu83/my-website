@@ -9,8 +9,7 @@
             background-color: #000; overflow: hidden;
         }
         #player { width: 100vw; height: 100vh; }
-		
-      		/* Vùng chứa cho dòng chữ chạy */
+        /* Vùng chứa cho dòng chữ chạy */
         #overlay-container {
             position: absolute;
             top: 20px;
@@ -31,6 +30,7 @@
             white-space: nowrap;
             will-change: transform; /* Tối ưu hiệu suất */
             opacity: 0;             /* Ẩn khi chưa có nội dung */
+        
         }
         #reward-overlay {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -40,8 +40,8 @@
             text-align: center; z-index: 1000;
         }
     </style>
-	<script>
-        // ----- GIỮ LẠI CODE MARQUEE THÔNG MINH CỦA BẠN -----
+    <script>
+        // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
         (function () {
             let styleEl;
             function injectKeyframes(distance) {
@@ -50,32 +50,45 @@
                     styleEl.id = 'marquee-style';
                     document.head.appendChild(styleEl);
                 }
-                styleEl.textContent = `@keyframes marqueeAnim { 0% { transform: translateX(0); } 100% { transform: translateX(${distance}px); } }`;
+                styleEl.textContent = `
+                    @keyframes marqueeAnim {
+                        0% { transform: translateX(0); }
+                        100% { transform: translateX(${distance}px); }
+                    }
+                `;
             }
+    
+            // Public để có thể gọi lại sau khi cập nhật nội dung
             window.setMarquee = function () {
                 const textEl = document.getElementById('viewer-overlay');
-                if (!textEl || !textEl.textContent.trim()) return;
+                if (!textEl) return;
+    
+                // đo kích thước thực
                 const screenWidth = window.innerWidth;
                 const textWidth = textEl.scrollWidth;
+    
+                // Khoảng di chuyển: dương nếu chữ ngắn hơn màn hình, âm nếu dài hơn
                 const distance = screenWidth - textWidth;
-                const duration = Math.max(8000, Math.min(40000, Math.abs(distance) * 20));
+    
+                // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
+                const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
+    
                 injectKeyframes(distance);
                 textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
-                textEl.style.opacity = 1;
             };
+    
+            // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
             window.addEventListener('resize', () => {
                 clearTimeout(window.__marqueeResizeTimer);
                 window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
             });
         })();
-    </script>
+        </script>
 </head>
 <body>
 
 <div id="player"></div>
-<div id="overlay-container">
-        <div id="viewer-overlay"></div>
-    </div>
+<div id="overlay-container"><div id="viewer-overlay"></div></div>
 <div id="reward-overlay"></div>
 
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -123,6 +136,7 @@
         if (event.data === YT.PlayerState.ENDED) {
             log('Video ended');
             viewerOverlay.style.opacity = 0;
+            viewerOverlay.style.animation = "none";
             
             // Show reward message if available
             const currentItem = queueManager.getCurrentItem();
@@ -130,20 +144,38 @@
                 showRewardMessage(currentItem);
             }
             
-            // Auto advance after delay
+            // Auto advance to next video
             setTimeout(() => {
-                const nextItem = queueManager.getNextItem();
-                if (nextItem) {
-                    log('Auto advancing to next item');
-                    queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
-                }
+                handleQueueAdvance();
             }, 2000);
         } else if (event.data === YT.PlayerState.PLAYING) {
             log('Video started playing');
+            sendCurrentStatus();
         }
     }
 
-    // Cast Message Interceptors - giống hệt test_cast_receiver.html
+    function handleQueueAdvance() {
+        log('Handling queue advance');
+        const currentIndex = queueManager.getCurrentItemIndex();
+        const queue = queueManager.getQueue();
+        
+        if (currentIndex < queue.length - 1) {
+            const nextIndex = currentIndex + 1;
+            log(`Jumping from index ${currentIndex} to ${nextIndex}`);
+            queueManager.jumpToItem(nextIndex);
+        } else {
+            log('Already at last item, checking repeat mode');
+            const repeatMode = queueManager.getRepeatMode ? queueManager.getRepeatMode() : 0;
+            if (repeatMode === 1) { // REPEAT_ALL
+                log('Repeat all mode, jumping to first item');
+                queueManager.jumpToItem(0);
+            } else {
+                log('No repeat mode, staying at last item');
+            }
+        }
+    }
+
+    // Cast Message Interceptors
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.LOAD,
         loadRequestData => {
@@ -156,7 +188,7 @@
             
             if (isYouTubeReady && ytPlayer && videoId) {
                 log(`Loading video: ${videoId}`);
-                ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
+                ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
             } else {
                 log('YouTube player not ready for LOAD');
             }
@@ -165,11 +197,14 @@
             if (customData.viewerName) {
                 viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
                 viewerOverlay.style.opacity = 1;
+                setTimeout(setMarquee, 0);
             } else {
                 viewerOverlay.textContent = "";
                 viewerOverlay.style.opacity = 0;
+                viewerOverlay.style.animation = "none";
             }
             
+            sendCurrentStatus();
             return null;
         }
     );
@@ -185,7 +220,40 @@
         }
     );
 
-    // Simple custom message handling
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.PAUSE,
+        () => { 
+            log('PAUSE command received');
+            if (isYouTubeReady && ytPlayer) {
+                ytPlayer.pauseVideo();
+            }
+            return null; 
+        }
+    );
+
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.QUEUE_NEXT,
+        () => {
+            log('QUEUE_NEXT command received');
+            handleQueueAdvance();
+            return null;
+        }
+    );
+
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.QUEUE_PREV,
+        () => {
+            log('QUEUE_PREV command received');
+            const prevItem = queueManager.getPreviousItem();
+            if (prevItem) {
+                const prevIndex = Math.max(0, queueManager.getCurrentItemIndex() - 1);
+                queueManager.jumpToItem(prevIndex);
+            }
+            return null;
+        }
+    );
+
+    // Custom message handling from sender
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
         log(`Received custom message: ${JSON.stringify(data)}`);
@@ -195,7 +263,8 @@
             const queue = queueManager.getQueue();
             for (let i = 0; i < queue.length; i++) {
                 const item = queue[i];
-                if (item.media.contentId === data.videoId) {
+                const contentId = item.media.contentId || '';
+                if (contentId === data.videoId) {
                     log(`Found video at index ${i}, jumping to it`);
                     queueManager.jumpToItem(i);
                     break;
@@ -203,12 +272,35 @@
             }
         } else if (data.cmd === "playNext") {
             log('Play next command received');
-            const nextItem = queueManager.getNextItem();
-            if (nextItem) {
-                queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
+            handleQueueAdvance();
+        } else if (data.cmd === "setRepeatMode") {
+            log(`Set repeat mode: ${data.mode}`);
+            try {
+                queueManager.setRepeatMode(data.mode);
+            } catch (e) {
+                log(`Error setting repeat mode: ${e}`);
             }
+            sendCurrentStatus();
+        } else if (data.event === "syncQueue") {
+            log('Sync queue command received');
+            sendCurrentStatus();
         }
     });
+
+    function sendCurrentStatus() {
+        const currentItem = queueManager.getCurrentItem();
+        const videoId = currentItem?.media?.contentId || currentVideoId;
+        const repeatMode = queueManager.getRepeatMode ? queueManager.getRepeatMode() : 0;
+        
+        const status = {
+            type: "statusUpdate",
+            repeatMode: repeatMode,
+            currentlyPlayingVideoId: videoId
+        };
+        
+        log(`Sending status: ${JSON.stringify(status)}`);
+        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, status);
+    }
 
     function showRewardMessage(item) {
         if (item?.media?.customData?.viewerName) {
