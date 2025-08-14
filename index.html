@@ -32,12 +32,13 @@
             opacity: 0;             /* Ẩn khi chưa có nội dung */
         
         }
+        /* CSS cho thông báo khen thưởng */
         #reward-overlay {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
-            font-weight: bold; font-size: 48px; padding: 30px 60px;
-            border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
-            text-align: center; z-index: 1000;
+            background-color: rgba(0, 0, 0, 0.85); color: #FF0000; font-weight: bold;
+            font-size: 48px; padding: 30px 60px; border-radius: 15px;
+            opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
+            z-index: 1000;
         }
     </style>
     <script>
@@ -156,22 +157,13 @@
 
     function handleQueueAdvance() {
         log('Handling queue advance');
-        const currentIndex = queueManager.getCurrentItemIndex();
-        const queue = queueManager.getQueue();
-        
-        if (currentIndex < queue.length - 1) {
-            const nextIndex = currentIndex + 1;
-            log(`Jumping from index ${currentIndex} to ${nextIndex}`);
+        const nextItem = queueManager.getNextItem();
+        if (nextItem) {
+            log('Found next item, jumping to it');
+            const nextIndex = queueManager.getCurrentItemIndex() + 1;
             queueManager.jumpToItem(nextIndex);
         } else {
-            log('Already at last item, checking repeat mode');
-            const repeatMode = queueManager.getRepeatMode ? queueManager.getRepeatMode() : 0;
-            if (repeatMode === 1) { // REPEAT_ALL
-                log('Repeat all mode, jumping to first item');
-                queueManager.jumpToItem(0);
-            } else {
-                log('No repeat mode, staying at last item');
-            }
+            log('No next item available');
         }
     }
 
