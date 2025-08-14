@@ -9,7 +9,8 @@
             background-color: #000; overflow: hidden;
         }
         #player { width: 100vw; height: 100vh; }
-        /* Vùng chứa cho dòng chữ chạy */
+		
+      		/* Vùng chứa cho dòng chữ chạy */
         #overlay-container {
             position: absolute;
             top: 20px;
@@ -30,66 +31,66 @@
             white-space: nowrap;
             will-change: transform; /* Tối ưu hiệu suất */
             opacity: 0;             /* Ẩn khi chưa có nội dung */
-        
         }
-        /* CSS cho thông báo khen thưởng */
         #reward-overlay {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.85); color: #FF0000; font-weight: bold;
-            font-size: 48px; padding: 30px 60px; border-radius: 15px;
-            opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
-            z-index: 1000;
+            background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
+            font-weight: bold; font-size: 48px; padding: 30px 60px;
+            border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
+            text-align: center; z-index: 1000;
         }
     </style>
-    <script>
-        // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
-        (function () {
-            let styleEl;
-            function injectKeyframes(distance) {
-                if (!styleEl) {
-                    styleEl = document.createElement('style');
-                    styleEl.id = 'marquee-style';
-                    document.head.appendChild(styleEl);
-                }
-                styleEl.textContent = `
-                    @keyframes marqueeAnim {
-                        0% { transform: translateX(0); }
-                        100% { transform: translateX(${distance}px); }
-                    }
-                `;
+	<script>
+    // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
+    (function () {
+        let styleEl;
+        function injectKeyframes(distance) {
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'marquee-style';
+                document.head.appendChild(styleEl);
             }
-    
-            // Public để có thể gọi lại sau khi cập nhật nội dung
-            window.setMarquee = function () {
-                const textEl = document.getElementById('viewer-overlay');
-                if (!textEl) return;
-    
-                // đo kích thước thực
-                const screenWidth = window.innerWidth;
-                const textWidth = textEl.scrollWidth;
-    
-                // Khoảng di chuyển: dương nếu chữ ngắn hơn màn hình, âm nếu dài hơn
-                const distance = screenWidth - textWidth;
-    
-                // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
-                const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
-    
-                injectKeyframes(distance);
-                textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
-            };
-    
-            // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
-            window.addEventListener('resize', () => {
-                clearTimeout(window.__marqueeResizeTimer);
-                window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
-            });
-        })();
-        </script>
+            styleEl.textContent = `
+                @keyframes marqueeAnim {
+                    0% { transform: translateX(0); }
+                    100% { transform: translateX(${distance}px); }
+                }
+            `;
+        }
+
+        // Public để có thể gọi lại sau khi cập nhật nội dung
+        window.setMarquee = function () {
+            const textEl = document.getElementById('viewer-overlay');
+            if (!textEl) return;
+
+            // đo kích thước thực
+            const screenWidth = window.innerWidth;
+            const textWidth = textEl.scrollWidth;
+
+            // Khoảng di chuyển: dương nếu chữ ngắn hơn màn hình, âm nếu dài hơn
+            const distance = screenWidth - textWidth;
+
+            // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
+            const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
+
+            injectKeyframes(distance);
+            textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
+        };
+
+        // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
+        window.addEventListener('resize', () => {
+            clearTimeout(window.__marqueeResizeTimer);
+            window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
+        });
+    })();
+    </script>
 </head>
 <body>
 
 <div id="player"></div>
-<div id="overlay-container"><div id="viewer-overlay"></div></div>
+<div id="overlay-container">
+        <div id="viewer-overlay"></div>
+    </div>
 <div id="reward-overlay"></div>
 
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -137,7 +138,6 @@
         if (event.data === YT.PlayerState.ENDED) {
             log('Video ended');
             viewerOverlay.style.opacity = 0;
-            viewerOverlay.style.animation = "none";
             
             // Show reward message if available
             const currentItem = queueManager.getCurrentItem();
@@ -145,29 +145,20 @@
                 showRewardMessage(currentItem);
             }
             
-            // Auto advance to next video
+            // Auto advance after delay
             setTimeout(() => {
-                handleQueueAdvance();
+                const nextItem = queueManager.getNextItem();
+                if (nextItem) {
+                    log('Auto advancing to next item');
+                    queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
+                }
             }, 2000);
         } else if (event.data === YT.PlayerState.PLAYING) {
             log('Video started playing');
-            sendCurrentStatus();
         }
     }
 
-    function handleQueueAdvance() {
-        log('Handling queue advance');
-        const nextItem = queueManager.getNextItem();
-        if (nextItem) {
-            log('Found next item, jumping to it');
-            const nextIndex = queueManager.getCurrentItemIndex() + 1;
-            queueManager.jumpToItem(nextIndex);
-        } else {
-            log('No next item available');
-        }
-    }
-
-    // Cast Message Interceptors
+    // Cast Message Interceptors - giống hệt test_cast_receiver.html
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.LOAD,
         loadRequestData => {
@@ -180,7 +171,7 @@
             
             if (isYouTubeReady && ytPlayer && videoId) {
                 log(`Loading video: ${videoId}`);
-                ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+                ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
             } else {
                 log('YouTube player not ready for LOAD');
             }
@@ -189,14 +180,11 @@
             if (customData.viewerName) {
                 viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
                 viewerOverlay.style.opacity = 1;
-                setTimeout(setMarquee, 0);
             } else {
                 viewerOverlay.textContent = "";
                 viewerOverlay.style.opacity = 0;
-                viewerOverlay.style.animation = "none";
             }
             
-            sendCurrentStatus();
             return null;
         }
     );
@@ -212,40 +200,7 @@
         }
     );
 
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.PAUSE,
-        () => { 
-            log('PAUSE command received');
-            if (isYouTubeReady && ytPlayer) {
-                ytPlayer.pauseVideo();
-            }
-            return null; 
-        }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.QUEUE_NEXT,
-        () => {
-            log('QUEUE_NEXT command received');
-            handleQueueAdvance();
-            return null;
-        }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.QUEUE_PREV,
-        () => {
-            log('QUEUE_PREV command received');
-            const prevItem = queueManager.getPreviousItem();
-            if (prevItem) {
-                const prevIndex = Math.max(0, queueManager.getCurrentItemIndex() - 1);
-                queueManager.jumpToItem(prevIndex);
-            }
-            return null;
-        }
-    );
-
-    // Custom message handling from sender
+    // Simple custom message handling
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
         log(`Received custom message: ${JSON.stringify(data)}`);
@@ -255,8 +210,7 @@
             const queue = queueManager.getQueue();
             for (let i = 0; i < queue.length; i++) {
                 const item = queue[i];
-                const contentId = item.media.contentId || '';
-                if (contentId === data.videoId) {
+                if (item.media.contentId === data.videoId) {
                     log(`Found video at index ${i}, jumping to it`);
                     queueManager.jumpToItem(i);
                     break;
@@ -264,35 +218,12 @@
             }
         } else if (data.cmd === "playNext") {
             log('Play next command received');
-            handleQueueAdvance();
-        } else if (data.cmd === "setRepeatMode") {
-            log(`Set repeat mode: ${data.mode}`);
-            try {
-                queueManager.setRepeatMode(data.mode);
-            } catch (e) {
-                log(`Error setting repeat mode: ${e}`);
+            const nextItem = queueManager.getNextItem();
+            if (nextItem) {
+                queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
             }
-            sendCurrentStatus();
-        } else if (data.event === "syncQueue") {
-            log('Sync queue command received');
-            sendCurrentStatus();
         }
     });
-
-    function sendCurrentStatus() {
-        const currentItem = queueManager.getCurrentItem();
-        const videoId = currentItem?.media?.contentId || currentVideoId;
-        const repeatMode = queueManager.getRepeatMode ? queueManager.getRepeatMode() : 0;
-        
-        const status = {
-            type: "statusUpdate",
-            repeatMode: repeatMode,
-            currentlyPlayingVideoId: videoId
-        };
-        
-        log(`Sending status: ${JSON.stringify(status)}`);
-        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, status);
-    }
 
     function showRewardMessage(item) {
         if (item?.media?.customData?.viewerName) {
