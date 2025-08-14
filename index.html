@@ -9,7 +9,8 @@
             background-color: #000; overflow: hidden;
         }
         #player { width: 100vw; height: 100vh; }
-        /* Vùng chứa cho dòng chữ chạy */
+		
+      		/* Vùng chứa cho dòng chữ chạy */
         #overlay-container {
             position: absolute;
             top: 20px;
@@ -30,7 +31,6 @@
             white-space: nowrap;
             will-change: transform; /* Tối ưu hiệu suất */
             opacity: 0;             /* Ẩn khi chưa có nội dung */
-        
         }
         #reward-overlay {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -40,7 +40,7 @@
             text-align: center; z-index: 1000;
         }
     </style>
-    <script>
+	<script>
         // ----- GIỮ LẠI CODE MARQUEE THÔNG MINH CỦA BẠN -----
         (function () {
             let styleEl;
@@ -73,7 +73,9 @@
 <body>
 
 <div id="player"></div>
-<div id="overlay-container"><div id="viewer-overlay"></div></div>
+<div id="overlay-container">
+        <div id="viewer-overlay"></div>
+    </div>
 <div id="reward-overlay"></div>
 
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -121,7 +123,6 @@
         if (event.data === YT.PlayerState.ENDED) {
             log('Video ended');
             viewerOverlay.style.opacity = 0;
-            viewerOverlay.style.animation = "none";
             
             // Show reward message if available
             const currentItem = queueManager.getCurrentItem();
@@ -129,29 +130,20 @@
                 showRewardMessage(currentItem);
             }
             
-            // Auto advance to next video
+            // Auto advance after delay
             setTimeout(() => {
-                handleQueueAdvance();
+                const nextItem = queueManager.getNextItem();
+                if (nextItem) {
+                    log('Auto advancing to next item');
+                    queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
+                }
             }, 2000);
         } else if (event.data === YT.PlayerState.PLAYING) {
             log('Video started playing');
-            sendCurrentStatus();
         }
     }
 
-    function handleQueueAdvance() {
-        log('Handling queue advance');
-        const nextItem = queueManager.getNextItem();
-        if (nextItem) {
-            log('Found next item, jumping to it');
-            const nextIndex = queueManager.getCurrentItemIndex() + 1;
-            queueManager.jumpToItem(nextIndex);
-        } else {
-            log('No next item available');
-        }
-    }
-
-    // Cast Message Interceptors
+    // Cast Message Interceptors - giống hệt test_cast_receiver.html
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.LOAD,
         loadRequestData => {
@@ -163,13 +155,8 @@
             currentVideoId = videoId;
             
             if (isYouTubeReady && ytPlayer && videoId) {
-                // Extract video ID from URL if needed
-                let actualVideoId = videoId;
-                if (videoId.includes('youtube.com/watch?v=')) {
-                    actualVideoId = videoId.split('v=')[1].split('&')[0];
-                }
-                log(`Loading video: ${actualVideoId}`);
-                ytPlayer.loadVideoById({ videoId: actualVideoId, suggestedQuality: 'hd1080' });
+                log(`Loading video: ${videoId}`);
+                ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
             } else {
                 log('YouTube player not ready for LOAD');
             }
@@ -178,14 +165,11 @@
             if (customData.viewerName) {
                 viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
                 viewerOverlay.style.opacity = 1;
-                setTimeout(setMarquee, 0);
             } else {
                 viewerOverlay.textContent = "";
                 viewerOverlay.style.opacity = 0;
-                viewerOverlay.style.animation = "none";
             }
             
-            sendCurrentStatus();
             return null;
         }
     );
@@ -201,40 +185,7 @@
         }
     );
 
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.PAUSE,
-        () => { 
-            log('PAUSE command received');
-            if (isYouTubeReady && ytPlayer) {
-                ytPlayer.pauseVideo();
-            }
-            return null; 
-        }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.QUEUE_NEXT,
-        () => {
-            log('QUEUE_NEXT command received');
-            handleQueueAdvance();
-            return null;
-        }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.QUEUE_PREV,
-        () => {
-            log('QUEUE_PREV command received');
-            const prevItem = queueManager.getPreviousItem();
-            if (prevItem) {
-                const prevIndex = Math.max(0, queueManager.getCurrentItemIndex() - 1);
-                queueManager.jumpToItem(prevIndex);
-            }
-            return null;
-        }
-    );
-
-    // Custom message handling from sender
+    // Simple custom message handling
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
         log(`Received custom message: ${JSON.stringify(data)}`);
@@ -244,8 +195,7 @@
             const queue = queueManager.getQueue();
             for (let i = 0; i < queue.length; i++) {
                 const item = queue[i];
-                const contentId = item.media.contentId || '';
-                if (contentId.includes(data.videoId)) {
+                if (item.media.contentId === data.videoId) {
                     log(`Found video at index ${i}, jumping to it`);
                     queueManager.jumpToItem(i);
                     break;
@@ -253,35 +203,12 @@
             }
         } else if (data.cmd === "playNext") {
             log('Play next command received');
-            handleQueueAdvance();
-        } else if (data.type === "setRepeatMode") {
-            log(`Set repeat mode: ${data.mode}`);
-            try {
-                queueManager.setRepeatMode(data.mode);
-            } catch (e) {
-                log(`Error setting repeat mode: ${e}`);
+            const nextItem = queueManager.getNextItem();
+            if (nextItem) {
+                queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
             }
-            sendCurrentStatus();
-        } else if (data.event === "syncQueue") {
-            log('Sync queue command received');
-            sendCurrentStatus();
         }
     });
-
-    function sendCurrentStatus() {
-        const currentItem = queueManager.getCurrentItem();
-        const videoId = currentItem?.media?.contentId || currentVideoId;
-        const repeatMode = queueManager.getRepeatMode ? queueManager.getRepeatMode() : 0;
-        
-        const status = {
-            type: "statusUpdate",
-            repeatMode: repeatMode,
-            currentlyPlayingVideoId: videoId
-        };
-        
-        log(`Sending status: ${JSON.stringify(status)}`);
-        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, status);
-    }
 
     function showRewardMessage(item) {
         if (item?.media?.customData?.viewerName) {
