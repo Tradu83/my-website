@@ -88,7 +88,7 @@
 <body>
 
 <div id="player"></div>
-<div id="viewer-overlay"></div>
+<div id="overlay-container"><div id="viewer-overlay"></div></div>
 <div id="reward-overlay"></div>
 
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -102,6 +102,7 @@
     const rewardOverlay = document.getElementById('reward-overlay');
     let ytPlayer;
     let isYouTubeReady = false;
+    let currentVideoId = null;
 
     function log(message) {
         console.log('[YouTube Receiver]', message);
@@ -135,6 +136,7 @@
         if (event.data === YT.PlayerState.ENDED) {
             log('Video ended');
             viewerOverlay.style.opacity = 0;
+            viewerOverlay.style.animation = "none";
             
             // Show reward message if available
             const currentItem = queueManager.getCurrentItem();
@@ -142,18 +144,29 @@
                 showRewardMessage(currentItem);
             }
             
-            // Simple auto advance
+            // Auto advance to next video
             setTimeout(() => {
-                const nextItem = queueManager.getNextItem();
-                if (nextItem) {
-                    log('Auto advancing to next item');
-                    queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
-                }
+                handleQueueAdvance();
             }, 2000);
+        } else if (event.data === YT.PlayerState.PLAYING) {
+            log('Video started playing');
+            sendCurrentStatus();
         }
     }
 
-    // Cast Message Interceptors - giống hệt test_cast_receiver.html
+    function handleQueueAdvance() {
+        log('Handling queue advance');
+        const nextItem = queueManager.getNextItem();
+        if (nextItem) {
+            log('Found next item, jumping to it');
+            const nextIndex = queueManager.getCurrentItemIndex() + 1;
+            queueManager.jumpToItem(nextIndex);
+        } else {
+            log('No next item available');
+        }
+    }
+
+    // Cast Message Interceptors
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.LOAD,
         loadRequestData => {
@@ -162,6 +175,7 @@
             const customData = media.customData || {};
             
             log(`LOAD command received: ${videoId}`);
+            currentVideoId = videoId;
             
             if (isYouTubeReady && ytPlayer && videoId) {
                 log(`Loading video: ${videoId}`);
@@ -174,11 +188,14 @@
             if (customData.viewerName) {
                 viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
                 viewerOverlay.style.opacity = 1;
+                setTimeout(setMarquee, 0);
             } else {
                 viewerOverlay.textContent = "";
                 viewerOverlay.style.opacity = 0;
+                viewerOverlay.style.animation = "none";
             }
             
+            sendCurrentStatus();
             return null;
         }
     );
@@ -194,7 +211,40 @@
         }
     );
 
-    // Simple custom message handling
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.PAUSE,
+        () => { 
+            log('PAUSE command received');
+            if (isYouTubeReady && ytPlayer) {
+                ytPlayer.pauseVideo();
+            }
+            return null; 
+        }
+    );
+
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.QUEUE_NEXT,
+        () => {
+            log('QUEUE_NEXT command received');
+            handleQueueAdvance();
+            return null;
+        }
+    );
+
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.QUEUE_PREV,
+        () => {
+            log('QUEUE_PREV command received');
+            const prevItem = queueManager.getPreviousItem();
+            if (prevItem) {
+                const prevIndex = Math.max(0, queueManager.getCurrentItemIndex() - 1);
+                queueManager.jumpToItem(prevIndex);
+            }
+            return null;
+        }
+    );
+
+    // Custom message handling from sender
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
         log(`Received custom message: ${JSON.stringify(data)}`);
@@ -212,12 +262,35 @@
             }
         } else if (data.cmd === "playNext") {
             log('Play next command received');
-            const nextItem = queueManager.getNextItem();
-            if (nextItem) {
-                queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
+            handleQueueAdvance();
+        } else if (data.type === "setRepeatMode") {
+            log(`Set repeat mode: ${data.mode}`);
+            try {
+                queueManager.setRepeatMode(data.mode);
+            } catch (e) {
+                log(`Error setting repeat mode: ${e}`);
             }
+            sendCurrentStatus();
+        } else if (data.event === "syncQueue") {
+            log('Sync queue command received');
+            sendCurrentStatus();
         }
     });
+
+    function sendCurrentStatus() {
+        const currentItem = queueManager.getCurrentItem();
+        const videoId = currentItem?.media?.contentId || currentVideoId;
+        const repeatMode = queueManager.getRepeatMode ? queueManager.getRepeatMode() : 0;
+        
+        const status = {
+            type: "statusUpdate",
+            repeatMode: repeatMode,
+            currentlyPlayingVideoId: videoId
+        };
+        
+        log(`Sending status: ${JSON.stringify(status)}`);
+        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, status);
+    }
 
     function showRewardMessage(item) {
         if (item?.media?.customData?.viewerName) {
