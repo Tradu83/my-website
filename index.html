@@ -124,6 +124,28 @@
         sendCurrentStatus();
     }
 
+    // Sửa lỗi: Thêm message interceptor cho QUEUE_NEXT và QUEUE_PREV
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.QUEUE_NEXT,
+        () => {
+            log('Queue next command received');
+            handleQueueAdvance();
+            return null;
+        }
+    );
+
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.QUEUE_PREV,
+        () => {
+            log('Queue prev command received');
+            const prevItem = queueManager.getPreviousItem();
+            if (prevItem) {
+                playMediaItem(prevItem);
+            }
+            return null;
+        }
+    );
+
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.LOAD,
         loadRequestData => {
@@ -204,11 +226,20 @@
                 playMediaItem(nextItem);
             } else {
                 log('No next item in queue');
+                // Nếu là repeat all và không có next item, quay lại item đầu tiên
+                if (currentRepeatMode === cast.framework.messages.RepeatMode.ALL) {
+                    const firstItem = queueManager.getQueue()[0];
+                    if (firstItem) {
+                        log('Repeating from first item');
+                        queueManager.jumpToItem(0);
+                        playMediaItem(firstItem);
+                    }
+                }
             }
         }
     }
 
-    // Nhận custom message từ app
+    // Sửa lỗi: Cải thiện custom message handling
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
         log(`Received custom message: ${JSON.stringify(data)}`);
@@ -220,25 +251,22 @@
             sendCurrentStatus();
         } else if (data.cmd === "playById") {
             log(`Play by ID command: ${data.videoId}`);
-            // Find and play the specific video
+            // Tìm video trong queue và jump đến nó
             const queue = queueManager.getQueue();
             for (let i = 0; i < queue.length; i++) {
                 const item = queue[i];
                 if (item.media.contentId === data.videoId) {
                     log(`Found video at index ${i}, jumping to it`);
                     queueManager.jumpToItem(i);
+                    playMediaItem(item);
                     break;
                 }
             }
         } else if (data.cmd === "playNext") {
             log('Play next command received');
-            const nextItem = queueManager.getNextItem();
-            if (nextItem) {
-                playMediaItem(nextItem);
-            }
+            handleQueueAdvance();
         } else if (data.event === "syncQueue") {
             log('Sync queue command received');
-            // Queue sync is handled automatically by the framework
             sendCurrentStatus();
         }
     });
