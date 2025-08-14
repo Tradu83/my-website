@@ -2,317 +2,67 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Chiếu YouTube Receiver</title>
+    <title>Test YouTube Player</title>
     <style>
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background-color: #000; overflow: hidden;
         }
         #player { width: 100vw; height: 100vh; }
-        #overlay-container {
-            position: absolute; top: 20px; left: 0; width: 100%;
-            overflow: hidden; pointer-events: none; z-index: 2;
-        }
-        #viewer-overlay {
-            color: #CC0000; font-weight: bold; font-family: sans-serif;
-            font-size: 40px; text-shadow: 1px 1px 2px #000;
-            display: inline-block; white-space: nowrap;
-            will-change: transform; opacity: 0;
-        }
-        #reward-overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
-            font-weight: bold; font-size: 48px; padding: 30px 60px;
-            border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
-            text-align: center; z-index: 1000;
-        }
-        #next-song-notification {
-            bottom: 80px; left: 0; font-size: 32px; color: #FFFF00;
-            display: none;
-        }
     </style>
-
-    <script>
-    // Marquee động
-    (function () {
-        let styleEl;
-        function injectKeyframes(distance) {
-            if (!styleEl) {
-                styleEl = document.createElement('style');
-                styleEl.id = 'marquee-style';
-                document.head.appendChild(styleEl);
-            }
-            styleEl.textContent = `
-                @keyframes marqueeAnim {
-                    0% { transform: translateX(0); }
-                    100% { transform: translateX(${distance}px); }
-                }
-            `;
-        }
-        window.setMarquee = function () {
-            const textEl = document.getElementById('viewer-overlay');
-            if (!textEl) return;
-            const screenWidth = window.innerWidth;
-            const textWidth = textEl.scrollWidth;
-            const distance = screenWidth - textWidth;
-            const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
-            injectKeyframes(distance);
-            textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
-        };
-        window.addEventListener('resize', () => {
-            clearTimeout(window.__marqueeResizeTimer);
-            window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
-        });
-    })();
-    </script>
 </head>
 <body>
 
 <div id="player"></div>
-<div id="overlay-container"><div id="viewer-overlay"></div></div>
-<div id="next-song-notification"></div>
-<div id="reward-overlay"></div>
 
-<script type="text/javascript" src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-    const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.control";
-    const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
-    const queueManager = playerManager.getQueueManager();
-    const viewerOverlay = document.getElementById('viewer-overlay');
-    const rewardOverlay = document.getElementById('reward-overlay');
     let ytPlayer;
+    let isYouTubeReady = false;
 
-    let currentRepeatMode = cast.framework.messages.RepeatMode.OFF;
-    let currentMediaItem = null;
-    let currentVideoId = null;
-
-    // Debug logging
     function log(message) {
-        console.log('[YouTube Receiver]', message);
+        console.log('[Test YouTube]', message);
     }
 
     window.onYouTubeIframeAPIReady = function() {
         log('YouTube IFrame API ready');
         ytPlayer = new YT.Player('player', {
             height: '100%', width: '100%',
-            playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
-            events: { 'onStateChange': onPlayerStateChange }
+            playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
+            events: { 
+                'onStateChange': onPlayerStateChange,
+                'onReady': onPlayerReady,
+                'onError': onPlayerError
+            }
         });
     };
 
-    function playMediaItem(item) {
-        if (!item || !ytPlayer?.loadVideoById) return;
-        currentMediaItem = item;
-        const videoId = item.media.contentId;
-        const customData = item.media.customData;
+    function onPlayerReady(event) {
+        log('YouTube Player ready');
+        isYouTubeReady = true;
         
-        log(`Playing video: ${videoId}`);
-        currentVideoId = videoId;
-        
-        ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
-        
-        if (customData?.viewerName) {
-            viewerOverlay.innerText = `Ca sỹ trình bày: ${customData.viewerName}`;
-            viewerOverlay.style.opacity = 1;
-            setTimeout(setMarquee, 0);
-        } else {
-            viewerOverlay.style.opacity = 0;
-            viewerOverlay.style.animation = "none";
-        }
-        sendCurrentStatus();
+        // Test với một video ngắn
+        setTimeout(() => {
+            log('Loading test video');
+            ytPlayer.loadVideoById({ videoId: 'dQw4w9WgXcQ', suggestedQuality: 'hd1080' });
+        }, 2000);
     }
 
-    // Sửa lỗi: Thêm message interceptor cho QUEUE_NEXT và QUEUE_PREV
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.QUEUE_NEXT,
-        () => {
-            log('Queue next command received');
-            handleQueueAdvance();
-            return null;
-        }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.QUEUE_PREV,
-        () => {
-            log('Queue prev command received');
-            const prevItem = queueManager.getPreviousItem();
-            if (prevItem) {
-                playMediaItem(prevItem);
-            }
-            return null;
-        }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.LOAD,
-        loadRequestData => {
-            const media = loadRequestData.media;
-            const videoId = media.contentId;
-            const customData = media.customData || {};
-            
-            log(`Loading video: ${videoId}`);
-            currentVideoId = videoId;
-            
-            if (ytPlayer && videoId) {
-                ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
-            }
-            if (customData.viewerName) {
-                viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
-                viewerOverlay.style.opacity = 1;
-                setTimeout(setMarquee, 0);
-            } else {
-                viewerOverlay.textContent = "";
-                viewerOverlay.style.opacity = 0;
-                viewerOverlay.style.animation = "none";
-            }
-            sendCurrentStatus();
-            return null;
-        }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.PLAY,
-        () => { 
-            log('Play command received');
-            ytPlayer?.playVideo(); 
-            return null; 
-        }
-    );
-    
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.PAUSE,
-        () => { 
-            log('Pause command received');
-            ytPlayer?.pauseVideo(); 
-            return null; 
-        }
-    );
+    function onPlayerError(event) {
+        log(`YouTube Player error: ${event.data}`);
+    }
 
     function onPlayerStateChange(event) {
         log(`Player state changed: ${event.data}`);
-        if (event.data === YT.PlayerState.ENDED) {
-            log('Video ended');
-            viewerOverlay.style.opacity = 0;
-            viewerOverlay.style.animation = "none";
-            
-            // Show reward message before advancing
-            if (currentMediaItem?.media?.customData?.viewerName) {
-                showRewardMessage(currentMediaItem);
-            }
-            
-            // Delay advancing to allow reward message to show
-            setTimeout(() => {
-                handleQueueAdvance();
-            }, 1000);
-        } else if (event.data === YT.PlayerState.PLAYING) {
+        if (event.data === YT.PlayerState.PLAYING) {
             log('Video started playing');
-            sendCurrentStatus();
+        } else if (event.data === YT.PlayerState.ENDED) {
+            log('Video ended');
         }
     }
-
-    function handleQueueAdvance() {
-        log(`Handling queue advance. Repeat mode: ${currentRepeatMode}`);
-        if (currentRepeatMode === cast.framework.messages.RepeatMode.SINGLE) {
-            log('Repeating single video');
-            ytPlayer.seekTo(0);
-            ytPlayer.playVideo();
-        } else {
-            const nextItem = queueManager.getNextItem();
-            if (nextItem) {
-                log('Playing next item in queue');
-                playMediaItem(nextItem);
-            } else {
-                log('No next item in queue');
-                // Nếu là repeat all và không có next item, quay lại item đầu tiên
-                if (currentRepeatMode === cast.framework.messages.RepeatMode.ALL) {
-                    const firstItem = queueManager.getQueue()[0];
-                    if (firstItem) {
-                        log('Repeating from first item');
-                        queueManager.jumpToItem(0);
-                        playMediaItem(firstItem);
-                    }
-                }
-            }
-        }
-    }
-
-    // Sửa lỗi: Cải thiện custom message handling
-    context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
-        const data = event.data;
-        log(`Received custom message: ${JSON.stringify(data)}`);
-        
-        if (data.type === "setRepeatMode") {
-            currentRepeatMode = data.mode;
-            queueManager.setRepeatMode(currentRepeatMode);
-            log(`Repeat mode set to: ${currentRepeatMode}`);
-            sendCurrentStatus();
-        } else if (data.cmd === "playById") {
-            log(`Play by ID command: ${data.videoId}`);
-            // Tìm video trong queue và jump đến nó
-            const queue = queueManager.getQueue();
-            for (let i = 0; i < queue.length; i++) {
-                const item = queue[i];
-                if (item.media.contentId === data.videoId) {
-                    log(`Found video at index ${i}, jumping to it`);
-                    queueManager.jumpToItem(i);
-                    playMediaItem(item);
-                    break;
-                }
-            }
-        } else if (data.cmd === "playNext") {
-            log('Play next command received');
-            handleQueueAdvance();
-        } else if (data.event === "syncQueue") {
-            log('Sync queue command received');
-            sendCurrentStatus();
-        }
-    });
-
-    function sendCurrentStatus() {
-        const currentItem = queueManager.getCurrentItem();
-        const videoId = currentItem?.media?.contentId || currentVideoId;
-        
-        const status = {
-            type: "statusUpdate",
-            repeatMode: currentRepeatMode,
-            currentlyPlayingVideoId: videoId
-        };
-        
-        log(`Sending status: ${JSON.stringify(status)}`);
-        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, status);
-    }
-
-    function showRewardMessage(item) {
-        if (item?.media?.customData?.viewerName) {
-            const viewerName = item.media.customData.viewerName;
-            const score = Math.floor(Math.random() * 11) + 90;
-            rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
-            rewardOverlay.style.opacity = 1;
-            log(`Showing reward message for ${viewerName} with score ${score}`);
-            setTimeout(() => { 
-                rewardOverlay.style.opacity = 0; 
-                log('Reward message hidden');
-            }, 4000);
-        }
-    }
-
-    const options = new cast.framework.CastReceiverOptions();
-    options.disableIdleTimeout = true;
-    
-    // Add custom message listener before starting
-    context.start(options);
-    
-    log('Cast receiver started');
 
     window.addEventListener('load', () => {
         log('Page loaded');
-        if (viewerOverlay.textContent.trim() !== "") {
-            viewerOverlay.style.opacity = 1;
-            setMarquee();
-        }
     });
 </script>
 </body>
