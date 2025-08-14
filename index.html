@@ -1,29 +1,89 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-	<meta charset="UTF-8">
-	<title>Chiếu YouTube Receiver</title>
-	<style>
-		html, body {
-			margin: 0; padding: 0; width: 100%; height: 100%;
-			background-color: #000; overflow: hidden;
-		}
-		#player { width: 100vw; height: 100vh; }
-		#viewer-overlay {
-			position: absolute; top: 20px; left: 0; width: 100%;
-			color: #CC0000; font-weight: bold; font-family: sans-serif;
-			font-size: 40px; text-shadow: 1px 1px 2px #000;
-			text-align: center; opacity: 0; transition: opacity 0.5s;
-			z-index: 1000; pointer-events: none;
-		}
-		#reward-overlay {
-			position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-			background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
-			font-weight: bold; font-size: 48px; padding: 30px 60px;
-			border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
-			text-align: center; z-index: 1000;
-		}
-	</style>
+    <meta charset="UTF-8">
+    <title>Chiếu YouTube Receiver</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000; overflow: hidden;
+        }
+        #player { width: 100vw; height: 100vh; }
+        /* Vùng chứa cho dòng chữ chạy */
+        #overlay-container {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            overflow: hidden;      /* Ẩn phần vượt khung */
+            pointer-events: none;  /* Cho phép click xuyên qua */
+            z-index: 2;            /* Hiển thị trên video */
+        }
+        /* Dòng chữ chạy */
+        #viewer-overlay {
+            color: #CC0000;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 40px;
+            text-shadow: 1px 1px 2px #000;
+            display: inline-block;
+            white-space: nowrap;
+            will-change: transform; /* Tối ưu hiệu suất */
+            opacity: 0;             /* Ẩn khi chưa có nội dung */
+        
+        }
+        #reward-overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
+            font-weight: bold; font-size: 48px; padding: 30px 60px;
+            border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
+            text-align: center; z-index: 1000;
+        }
+    </style>
+    <script>
+        // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
+        (function () {
+            let styleEl;
+            function injectKeyframes(distance) {
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    styleEl.id = 'marquee-style';
+                    document.head.appendChild(styleEl);
+                }
+                styleEl.textContent = `
+                    @keyframes marqueeAnim {
+                        0% { transform: translateX(0); }
+                        100% { transform: translateX(${distance}px); }
+                    }
+                `;
+            }
+    
+            // Public để có thể gọi lại sau khi cập nhật nội dung
+            window.setMarquee = function () {
+                const textEl = document.getElementById('viewer-overlay');
+                if (!textEl) return;
+    
+                // đo kích thước thực
+                const screenWidth = window.innerWidth;
+                const textWidth = textEl.scrollWidth;
+    
+                // Khoảng di chuyển: dương nếu chữ ngắn hơn màn hình, âm nếu dài hơn
+                const distance = screenWidth - textWidth;
+    
+                // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
+                const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
+    
+                injectKeyframes(distance);
+                textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
+            };
+    
+            // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
+            window.addEventListener('resize', () => {
+                clearTimeout(window.__marqueeResizeTimer);
+                window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
+            });
+        })();
+        </script>
 </head>
 <body>
 
@@ -34,194 +94,155 @@
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-	const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.control";
-	const context = cast.framework.CastReceiverContext.getInstance();
-	const playerManager = context.getPlayerManager();
-	const queueManager = playerManager.getQueueManager();
-	const viewerOverlay = document.getElementById('viewer-overlay');
-	const rewardOverlay = document.getElementById('reward-overlay');
-	let ytPlayer;
-	let isYouTubeReady = false;
-	let currentVideoId = null;
-	let currentMediaItem = null;
-	let currentRepeatMode = cast.framework.messages.RepeatMode.OFF;
+    const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.control";
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+    const queueManager = playerManager.getQueueManager();
+    const viewerOverlay = document.getElementById('viewer-overlay');
+    const rewardOverlay = document.getElementById('reward-overlay');
+    let ytPlayer;
+    let isYouTubeReady = false;
 
-	function log(message) { console.log('[YouTube Receiver]', message); }
+    function log(message) {
+        console.log('[YouTube Receiver]', message);
+    }
 
-	// YouTube Player - giống test_cast_receiver.html
-	window.onYouTubeIframeAPIReady = function() {
-		log('YouTube IFrame API ready');
-		ytPlayer = new YT.Player('player', {
-			height: '100%', width: '100%',
-			playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
-			events: { 
-				'onStateChange': onPlayerStateChange,
-				'onReady': onPlayerReady,
-				'onError': onPlayerError
-			}
-		});
-	};
+    // YouTube Player - giống hệt test_cast_receiver.html
+    window.onYouTubeIframeAPIReady = function() {
+        log('YouTube IFrame API ready');
+        ytPlayer = new YT.Player('player', {
+            height: '100%', width: '100%',
+            playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
+            events: { 
+                'onStateChange': onPlayerStateChange,
+                'onReady': onPlayerReady,
+                'onError': onPlayerError
+            }
+        });
+    };
 
-	function onPlayerReady() {
-		log('YouTube Player ready');
-		isYouTubeReady = true;
-	}
-	function onPlayerError(event) { log(`YouTube Player error: ${event.data}`); }
+    function onPlayerReady(event) {
+        log('YouTube Player ready');
+        isYouTubeReady = true;
+    }
 
-	function onPlayerStateChange(event) {
-		log(`Player state: ${event.data}`);
-		if (event.data === YT.PlayerState.ENDED) {
-			log('Video ended');
-			viewerOverlay.style.opacity = 0;
+    function onPlayerError(event) {
+        log(`YouTube Player error: ${event.data}`);
+    }
 
-			const curItem = queueManager.getCurrentItem();
-			if (curItem?.media?.customData?.viewerName) showRewardMessage(curItem);
+    function onPlayerStateChange(event) {
+        log(`Player state: ${event.data}`);
+        if (event.data === YT.PlayerState.ENDED) {
+            log('Video ended');
+            viewerOverlay.style.opacity = 0;
+            
+            // Show reward message if available
+            const currentItem = queueManager.getCurrentItem();
+            if (currentItem?.media?.customData?.viewerName) {
+                showRewardMessage(currentItem);
+            }
+            
+            // Simple auto advance
+            setTimeout(() => {
+                const nextItem = queueManager.getNextItem();
+                if (nextItem) {
+                    log('Auto advancing to next item');
+                    queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
+                }
+            }, 2000);
+        }
+    }
 
-			setTimeout(() => { handleQueueAdvance(); }, 1200);
-		} else if (event.data === YT.PlayerState.PLAYING) {
-			log('Video started playing');
-			sendCurrentStatus();
-		}
-	}
+    // Cast Message Interceptors - giống hệt test_cast_receiver.html
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.LOAD,
+        loadRequestData => {
+            const media = loadRequestData.media;
+            const videoId = media.contentId;
+            const customData = media.customData || {};
+            
+            log(`LOAD command received: ${videoId}`);
+            
+            if (isYouTubeReady && ytPlayer && videoId) {
+                log(`Loading video: ${videoId}`);
+                ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
+            } else {
+                log('YouTube player not ready for LOAD');
+            }
+            
+            // Show viewer name if available
+            if (customData.viewerName) {
+                viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
+                viewerOverlay.style.opacity = 1;
+            } else {
+                viewerOverlay.textContent = "";
+                viewerOverlay.style.opacity = 0;
+            }
+            
+            return null;
+        }
+    );
 
-	function playMediaItem(item) {
-		if (!item) { log('No item to play'); return; }
-		currentMediaItem = item;
-		const videoId = item.media.contentId;
-		const customData = item.media.customData || {};
-		currentVideoId = videoId;
-		log(`playMediaItem -> ${videoId}`);
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.PLAY,
+        () => { 
+            log('PLAY command received');
+            if (isYouTubeReady && ytPlayer) {
+                ytPlayer.playVideo();
+            }
+            return null; 
+        }
+    );
 
-		if (isYouTubeReady && ytPlayer && videoId) {
-			ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
-		} else {
-			log('YouTube player not ready for playMediaItem');
-		}
+    // Simple custom message handling
+    context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
+        const data = event.data;
+        log(`Received custom message: ${JSON.stringify(data)}`);
+        
+        if (data.cmd === "playById") {
+            log(`Play by ID command: ${data.videoId}`);
+            const queue = queueManager.getQueue();
+            for (let i = 0; i < queue.length; i++) {
+                const item = queue[i];
+                if (item.media.contentId === data.videoId) {
+                    log(`Found video at index ${i}, jumping to it`);
+                    queueManager.jumpToItem(i);
+                    break;
+                }
+            }
+        } else if (data.cmd === "playNext") {
+            log('Play next command received');
+            const nextItem = queueManager.getNextItem();
+            if (nextItem) {
+                queueManager.jumpToItem(queueManager.getCurrentItemIndex() + 1);
+            }
+        }
+    });
 
-		if (customData.viewerName) {
-			viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
-			viewerOverlay.style.opacity = 1;
-		} else {
-			viewerOverlay.textContent = '';
-			viewerOverlay.style.opacity = 0;
-		}
-		sendCurrentStatus();
-	}
+    function showRewardMessage(item) {
+        if (item?.media?.customData?.viewerName) {
+            const viewerName = item.media.customData.viewerName;
+            const score = Math.floor(Math.random() * 11) + 90;
+            rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
+            rewardOverlay.style.opacity = 1;
+            log(`Showing reward message for ${viewerName} with score ${score}`);
+            setTimeout(() => { 
+                rewardOverlay.style.opacity = 0; 
+                log('Reward message hidden');
+            }, 4000);
+        }
+    }
 
-	function handleQueueAdvance() {
-		log(`handleQueueAdvance, repeat=${currentRepeatMode}`);
-		if (currentRepeatMode === cast.framework.messages.RepeatMode.SINGLE) {
-			if (isYouTubeReady && ytPlayer) { ytPlayer.seekTo(0); ytPlayer.playVideo(); }
-			return;
-		}
-		const nextItem = queueManager.getNextItem();
-		if (nextItem) {
-			const nextIndex = queueManager.getCurrentItemIndex() + 1;
-			queueManager.jumpToItem(nextIndex);
-			playMediaItem(nextItem);
-			return;
-		}
-		if (currentRepeatMode === cast.framework.messages.RepeatMode.ALL) {
-			const firstItem = queueManager.getQueue()[0];
-			if (firstItem) { queueManager.jumpToItem(0); playMediaItem(firstItem); }
-		}
-	}
+    // Start Cast receiver
+    const options = new cast.framework.CastReceiverOptions();
+    options.disableIdleTimeout = true;
+    context.start(options);
+    
+    log('Cast receiver started');
 
-	// Interceptors
-	playerManager.setMessageInterceptor(
-		cast.framework.messages.MessageType.LOAD,
-		loadRequestData => {
-			const media = loadRequestData.media;
-			const videoId = media.contentId;
-			const customData = media.customData || {};
-			log(`LOAD: ${videoId}`);
-			currentVideoId = videoId;
-			if (isYouTubeReady && ytPlayer && videoId) {
-				ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
-			} else {
-				log('YouTube not ready for LOAD');
-			}
-			if (customData.viewerName) { viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`; viewerOverlay.style.opacity = 1; }
-			else { viewerOverlay.textContent = ''; viewerOverlay.style.opacity = 0; }
-			sendCurrentStatus();
-			return null;
-		}
-	);
-
-	playerManager.setMessageInterceptor(
-		cast.framework.messages.MessageType.PLAY,
-		() => { if (isYouTubeReady && ytPlayer) ytPlayer.playVideo(); return null; }
-	);
-	playerManager.setMessageInterceptor(
-		cast.framework.messages.MessageType.PAUSE,
-		() => { if (isYouTubeReady && ytPlayer) ytPlayer.pauseVideo(); return null; }
-	);
-	playerManager.setMessageInterceptor(
-		cast.framework.messages.MessageType.QUEUE_NEXT,
-		() => { log('QUEUE_NEXT'); handleQueueAdvance(); return null; }
-	);
-	playerManager.setMessageInterceptor(
-		cast.framework.messages.MessageType.QUEUE_PREV,
-		() => {
-			log('QUEUE_PREV');
-			const prevItem = queueManager.getPreviousItem();
-			if (prevItem) {
-				const prevIndex = Math.max(0, queueManager.getCurrentItemIndex() - 1);
-				queueManager.jumpToItem(prevIndex);
-				playMediaItem(prevItem);
-			}
-			return null;
-		}
-	);
-
-	// Custom messages từ Sender
-	context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
-		const data = event.data || {};
-		log(`Custom message: ${JSON.stringify(data)}`);
-		if (data.type === 'setRepeatMode') {
-			currentRepeatMode = data.mode;
-			try { queueManager.setRepeatMode?.(currentRepeatMode); } catch(e) {}
-			sendCurrentStatus();
-			return;
-		}
-		if (data.cmd === 'playById') {
-			const queue = queueManager.getQueue();
-			for (let i = 0; i < queue.length; i++) {
-				const item = queue[i];
-				if (item.media.contentId === data.videoId) {
-					queueManager.jumpToItem(i);
-					playMediaItem(item);
-					break;
-				}
-			}
-			return;
-		}
-		if (data.cmd === 'playNext') { handleQueueAdvance(); return; }
-		if (data.event === 'syncQueue') { sendCurrentStatus(); return; }
-	});
-
-	function sendCurrentStatus() {
-		const currentItem = queueManager.getCurrentItem();
-		const videoId = currentItem?.media?.contentId || currentVideoId;
-		const status = { type: 'statusUpdate', repeatMode: currentRepeatMode, currentlyPlayingVideoId: videoId };
-		log(`Send status: ${JSON.stringify(status)}`);
-		context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, status);
-	}
-
-	function showRewardMessage(item) {
-		if (item?.media?.customData?.viewerName) {
-			const viewerName = item.media.customData.viewerName;
-			const score = Math.floor(Math.random() * 11) + 90;
-			rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
-			rewardOverlay.style.opacity = 1;
-			setTimeout(() => { rewardOverlay.style.opacity = 0; }, 3500);
-		}
-	}
-
-	const options = new cast.framework.CastReceiverOptions();
-	options.disableIdleTimeout = true;
-	context.start(options);
-	log('Cast receiver started');
+    window.addEventListener('load', () => {
+        log('Page loaded');
+    });
 </script>
 </body>
 </html>
