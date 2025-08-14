@@ -84,6 +84,7 @@
     const rewardOverlay = document.getElementById('reward-overlay');
     let ytPlayer;
     let isYouTubeReady = false;
+    let pendingVideoId = null;
 
     let currentRepeatMode = cast.framework.messages.RepeatMode.OFF;
     let currentMediaItem = null;
@@ -94,37 +95,74 @@
         console.log('[YouTube Receiver]', message);
     }
 
+    // Khởi tạo YouTube player ngay khi API sẵn sàng
     window.onYouTubeIframeAPIReady = function() {
         log('YouTube IFrame API ready');
+        initializeYouTubePlayer();
+    };
+
+    function initializeYouTubePlayer() {
+        log('Initializing YouTube player');
         ytPlayer = new YT.Player('player', {
             height: '100%', width: '100%',
-            playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0 },
+            playerVars: { 
+                'autoplay': 1, 
+                'controls': 0, 
+                'rel': 0,
+                'modestbranding': 1,
+                'showinfo': 0
+            },
             events: { 
                 'onStateChange': onPlayerStateChange,
                 'onReady': onPlayerReady,
                 'onError': onPlayerError
             }
         });
-    };
+    }
 
     function onPlayerReady(event) {
         log('YouTube Player ready');
         isYouTubeReady = true;
+        
+        // Nếu có video đang chờ, load ngay
+        if (pendingVideoId) {
+            log(`Loading pending video: ${pendingVideoId}`);
+            loadVideo(pendingVideoId);
+            pendingVideoId = null;
+        }
     }
 
     function onPlayerError(event) {
         log(`YouTube Player error: ${event.data}`);
+        // Retry với video khác nếu có lỗi
+        if (pendingVideoId) {
+            log('Retrying with pending video');
+            setTimeout(() => {
+                if (isYouTubeReady && ytPlayer) {
+                    loadVideo(pendingVideoId);
+                }
+            }, 2000);
+        }
+    }
+
+    function loadVideo(videoId) {
+        if (!isYouTubeReady || !ytPlayer) {
+            log(`YouTube player not ready, queuing video: ${videoId}`);
+            pendingVideoId = videoId;
+            return;
+        }
+
+        try {
+            log(`Loading video: ${videoId}`);
+            ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+        } catch (error) {
+            log(`Error loading video: ${error}`);
+        }
     }
 
     function playMediaItem(item) {
         if (!item) {
             log('No item to play');
-            return;
-        }
-        
-        if (!isYouTubeReady || !ytPlayer?.loadVideoById) {
-            log('YouTube player not ready, retrying in 1 second');
-            setTimeout(() => playMediaItem(item), 1000);
             return;
         }
         
@@ -135,13 +173,10 @@
         log(`Playing video: ${videoId}`);
         currentVideoId = videoId;
         
-        try {
-            ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
-            log(`Video loaded: ${videoId}`);
-        } catch (error) {
-            log(`Error loading video: ${error}`);
-        }
+        // Load video
+        loadVideo(videoId);
         
+        // Hiển thị tên ca sỹ
         if (customData?.viewerName) {
             viewerOverlay.innerText = `Ca sỹ trình bày: ${customData.viewerName}`;
             viewerOverlay.style.opacity = 1;
@@ -153,7 +188,7 @@
         sendCurrentStatus();
     }
 
-    // Sửa lỗi: Thêm message interceptor cho QUEUE_NEXT và QUEUE_PREV
+    // Message interceptors
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.QUEUE_NEXT,
         () => {
@@ -182,21 +217,13 @@
             const videoId = media.contentId;
             const customData = media.customData || {};
             
-            log(`Loading video: ${videoId}`);
+            log(`Loading video via LOAD command: ${videoId}`);
             currentVideoId = videoId;
             
-            // Đảm bảo YouTube player đã sẵn sàng
-            if (isYouTubeReady && ytPlayer && videoId) {
-                try {
-                    ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
-                    log(`Video loaded via LOAD command: ${videoId}`);
-                } catch (error) {
-                    log(`Error loading video via LOAD: ${error}`);
-                }
-            } else {
-                log('YouTube player not ready for LOAD command');
-            }
+            // Load video
+            loadVideo(videoId);
             
+            // Hiển thị tên ca sỹ
             if (customData.viewerName) {
                 viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
                 viewerOverlay.style.opacity = 1;
@@ -256,6 +283,8 @@
             log('Video buffering');
         } else if (event.data === YT.PlayerState.CUED) {
             log('Video cued');
+        } else if (event.data === YT.PlayerState.UNSTARTED) {
+            log('Video unstarted');
         }
     }
 
@@ -287,7 +316,7 @@
         }
     }
 
-    // Sửa lỗi: Cải thiện custom message handling
+    // Custom message handling
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
         log(`Received custom message: ${JSON.stringify(data)}`);
@@ -350,7 +379,7 @@
     const options = new cast.framework.CastReceiverOptions();
     options.disableIdleTimeout = true;
     
-    // Add custom message listener before starting
+    // Start Cast receiver
     context.start(options);
     
     log('Cast receiver started');
