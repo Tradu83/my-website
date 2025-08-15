@@ -45,33 +45,33 @@
             line-height: 1.1;
             margin-top: 8px;
         }
-        #splash-screen {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #000;
-            z-index: 999;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        #splash-screen img {
-            width: 250px; /* Tăng kích thước logo một chút cho cân đối */
-            height: auto;
-        }
-		#splash-screen-logo-container {
-    perspective: 500px; /* Tạo không gian 3D */
-}
+       /* === BẮT ĐẦU KHỐI CSS MỚI CHO SPLASH SCREEN === */
 
-#splash-screen-logo {
+#splash-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    height: auto;
-    transition: transform 1s ease-in-out; /* Thêm transition cho mượt mà (tùy chọn) */
-    animation: rotate3D 5s linear infinite; /* Gọi animation xoay */
+    height: 100%;
+    background-color: #000;
+    z-index: 999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    /* 1. Tạo không gian 3D cho các phần tử con */
+    perspective: 800px; 
 }
 
+#splash-screen img {
+    width: 250px;
+    height: auto;
+    
+    /* 2. Áp dụng animation xoay cho chính logo */
+    animation: rotate3D 5s linear infinite;
+}
+
+/* 3. Định nghĩa animation xoay 360 độ quanh trục Y (trục thẳng đứng) */
 @keyframes rotate3D {
     from {
         transform: rotateY(0deg);
@@ -80,6 +80,8 @@
         transform: rotateY(360deg);
     }
 }
+
+/* === KẾT THÚC KHỐI CSS MỚI === */
     </style>
     <script>
         (function () {
@@ -110,9 +112,8 @@
 </head>
 <body>
     <div id="splash-screen">
-    <div id="splash-screen-logo-container">
-        <img id="splash-screen-logo" src="my_logo.png" alt="Ready to Cast">
-    </div>
+    <img src="my_logo.png" alt="Ready to Cast">
+</div>
 </div>
     <div id="player"></div>
     <div id="overlay-container"><div id="viewer-overlay"></div></div>
