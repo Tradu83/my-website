@@ -45,43 +45,35 @@
             line-height: 1.1;
             margin-top: 8px;
         }
-       /* === BẮT ĐẦU KHỐI CSS MỚI CHO SPLASH SCREEN === */
 
-#splash-screen {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: #000;
-    z-index: 999;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    
-    /* 1. Tạo không gian 3D cho các phần tử con */
-    perspective: 800px; 
-}
+        #splash-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            z-index: 999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            
+            /* === SỬA LỖI 1: Xếp các mục theo chiều dọc === */
+            flex-direction: column; 
+            
+            perspective: 800px; 
+        }
 
-#splash-screen img {
-    width: 250px;
-    height: auto;
-    
-    /* 2. Áp dụng animation xoay cho chính logo */
-    animation: rotate3D 5s linear infinite;
-}
+        #splash-screen img {
+            width: 250px;
+            height: auto;
+            animation: rotate3D 5s linear infinite;
+        }
 
-/* 3. Định nghĩa animation xoay 360 độ quanh trục Y (trục thẳng đứng) */
-@keyframes rotate3D {
-    from {
-        transform: rotateY(0deg);
-    }
-    to {
-        transform: rotateY(360deg);
-    }
-}
-
-/* === KẾT THÚC KHỐI CSS MỚI === */
+        @keyframes rotate3D {
+            from { transform: rotateY(0deg); }
+            to { transform: rotateY(360deg); }
+        }
     </style>
     <script>
         (function () {
@@ -112,12 +104,11 @@
 </head>
 <body>
     <div id="splash-screen">
-    <img src="my_logo.png" alt="Ready to Cast">
-	<p style="color: white; font-size: 30px; font-weight: bold; text-shadow: 1px 1px 3px black; margin-top: 20px;">
-        CHƯƠNG TRÌNH HÁT KARAOKE BY TRẦN DUYÊN
-    </p>
-</div>
-</div>
+        <img src="my_logo.png" alt="Ready to Cast">
+        <p style="color: white; font-size: 30px; font-weight: bold; text-shadow: 1px 1px 3px black; margin-top: 20px;">
+            CHƯƠNG TRÌNH HÁT KARAOKE BY TRẦN DUYÊN
+        </p>
+    </div>
     <div id="player"></div>
     <div id="overlay-container"><div id="viewer-overlay"></div></div>
     <div id="reward-overlay"></div>
@@ -125,9 +116,6 @@
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script>
-    // <<< BẮT ĐẦU NỘI DUNG SCRIPT ĐÃ SỬA >>>
-
-    // <<< SỬA LỖI NGHIÊM TRỌNG: Namespace phải khớp với Service (dùng dấu chấm) >>>
     const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.custom";
 
     const context = cast.framework.CastReceiverContext.getInstance();
@@ -137,11 +125,8 @@
     let ytPlayer;
     let isYouTubeReady = false;
     let currentViewerName = null;
-	// <<< THAY ĐỔI 1: Tạo đối tượng Audio để chuẩn bị file nhạc >>>
-	const rewardAudio = new Audio('music.mp3'); 
+    const rewardAudio = new Audio('music.mp3'); 
 
-	let progressInterval = null;
-	let isRewardShown = false;
     function log(message) {
         console.log('[YouTube Receiver]', message);
     }
@@ -165,37 +150,27 @@
     }
 
     function onPlayerError(event) {
-        // <<< SỬA LỖI: Lỗi chính tả nhỏ >>>
         log(`Youtubeer error: ${event.data}`);
     }
 
+    // === SỬA LỖI 2: Quay về logic đơn giản và ổn định ===
     function onPlayerStateChange(event) {
-    log(`Player state: ${event.data}`);
-    if (event.data === YT.PlayerState.ENDED) {
-        // <<< BƯỚC 1: Lưu lại ID của video vừa thực sự kết thúc >>>
-        const endedVideoId = currentVideoId; 
-
-        log('Video ended. Displaying reward and setting a short delay.');
-        viewerOverlay.style.opacity = 0;
-        viewerOverlay.style.animation = "none";
-        
-        if (currentViewerName) {
-            showRewardMessage(currentViewerName);
-        }
-        
-        setTimeout(() => {
-            // <<< BƯỚC 2: Chỉ gửi tín hiệu nếu không có video nào khác đã chen vào phát >>>
-            // Nếu currentVideoId vẫn bằng endedVideoId, tức là không có gì thay đổi.
-            if (currentVideoId === endedVideoId) {
-                log(`Delay finished for ${endedVideoId}. Notifying sender to play next video.`);
+        log(`Player state: ${event.data}`);
+        if (event.data === YT.PlayerState.ENDED) {
+            log('Video ended. Displaying reward and setting a short delay.');
+            
+            if (currentViewerName) {
+                showRewardMessage(currentViewerName);
+            }
+            
+            // Chờ một chút để người dùng xem thông báo rồi mới báo cho điện thoại
+            setTimeout(() => {
+                log('Delay finished. Notifying sender to play next video.');
                 const message = { type: "VIDEO_ENDED" };
                 context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
-            } else {
-                log(`Delay finished for ${endedVideoId}, but a new video (${currentVideoId}) is already playing. Cancelling autoplay.`);
-            }
-        }, 4500); // 4.5 giây
+            }, 4500); // 4.5 giây
+        }
     }
-}
 
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
@@ -210,9 +185,10 @@
     });
 
     function loadVideoFromMessage(media) {
-	// <<< THAY ĐỔI 3: Dừng và reset nhạc khen thưởng khi video mới bắt đầu >>>
-    rewardAudio.pause();
-    rewardAudio.currentTime = 0;
+        // Dừng nhạc khen thưởng của video cũ
+        rewardAudio.pause();
+        rewardAudio.currentTime = 0;
+
         const splash = document.getElementById('splash-screen');
         if (splash) {
             splash.style.display = 'none';
@@ -271,9 +247,11 @@
         const scoreElement = document.getElementById('score-counter');
         rewardOverlay.style.opacity = 1;
         log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
-		// <<< THAY ĐỔI 2: Phát nhạc khi thông báo hiển thị >>>
-		rewardAudio.currentTime = 0; // Tua về đầu để đảm bảo nhạc phát từ đầu
-		rewardAudio.play();
+        
+        // Phát nhạc
+        rewardAudio.currentTime = 0;
+        rewardAudio.play();
+
         const counterInterval = setInterval(() => {
             if (currentScore < finalScore) {
                 currentScore++;
@@ -283,19 +261,17 @@
             }
         }, 50);
 
-        // <<< SỬA LỖI: Đặt lại thời gian hiển thị là 10 giây >>>
         setTimeout(() => {
             rewardOverlay.style.opacity = 0;
             clearInterval(counterInterval);
             log('Reward message hidden');
-        }, 7000); // 7 giây
+        }, 10000); // Đặt lại thời gian hiển thị 10 giây như mong muốn
     }
 
     const options = new cast.framework.CastReceiverOptions();
     options.disableIdleTimeout = true;
     context.start(options);
     log('Cast receiver started');
-
     </script>
 </body>
 </html>
