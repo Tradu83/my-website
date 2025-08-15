@@ -154,23 +154,25 @@
     }
 
     // === SỬA LỖI 2: Quay về logic đơn giản và ổn định ===
-    function onPlayerStateChange(event) {
-        log(`Player state: ${event.data}`);
-        if (event.data === YT.PlayerState.ENDED) {
-            log('Video ended. Displaying reward and setting a short delay.');
-            
-            if (currentViewerName) {
-                showRewardMessage(currentViewerName);
-            }
-            
-            // Chờ một chút để người dùng xem thông báo rồi mới báo cho điện thoại
-            setTimeout(() => {
-                log('Delay finished. Notifying sender to play next video.');
-                const message = { type: "VIDEO_ENDED" };
-                context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
-            }, 4500); // 4.5 giây
+    // <<< HÃY DÙNG PHIÊN BẢN HÀM NÀY >>>
+function onPlayerStateChange(event) {
+    log(`Player state: ${event.data}`);
+    if (event.data === YT.PlayerState.ENDED) {
+        log('Video ended. Displaying reward and setting a short delay.');
+        
+        // Hiển thị khen thưởng
+        if (currentViewerName) {
+            showRewardMessage(currentViewerName);
         }
+        
+        // Logic đơn giản: Chờ 4.5 giây rồi GỬI TÍN HIỆU. Không kiểm tra gì thêm.
+        setTimeout(() => {
+            log('Delay finished. Notifying sender to play next video.');
+            const message = { type: "VIDEO_ENDED" };
+            context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
+        }, 4500); // 4.5 giây
     }
+}
 
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
