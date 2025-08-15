@@ -61,6 +61,25 @@
             width: 250px; /* Tăng kích thước logo một chút cho cân đối */
             height: auto;
         }
+		#splash-screen-logo-container {
+    perspective: 500px; /* Tạo không gian 3D */
+}
+
+#splash-screen-logo {
+    width: 100%;
+    height: auto;
+    transition: transform 1s ease-in-out; /* Thêm transition cho mượt mà (tùy chọn) */
+    animation: rotate3D 5s linear infinite; /* Gọi animation xoay */
+}
+
+@keyframes rotate3D {
+    from {
+        transform: rotateY(0deg);
+    }
+    to {
+        transform: rotateY(360deg);
+    }
+}
     </style>
     <script>
         (function () {
@@ -91,8 +110,10 @@
 </head>
 <body>
     <div id="splash-screen">
-        <img src="my_logo.png" alt="Ready to Cast">
+    <div id="splash-screen-logo-container">
+        <img id="splash-screen-logo" src="my_logo.png" alt="Ready to Cast">
     </div>
+</div>
     <div id="player"></div>
     <div id="overlay-container"><div id="viewer-overlay"></div></div>
     <div id="reward-overlay"></div>
