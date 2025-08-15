@@ -49,6 +49,25 @@
     line-height: 1.1;
     margin-top: 8px;
 }
+#splash-screen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #000;
+        z-index: 999; /* Đảm bảo nó nằm trên cùng */
+
+        /* Dùng Flexbox để căn giữa nội dung một cách hoàn hảo */
+        display: flex;
+        justify-content: center; /* Căn giữa theo chiều ngang */
+        align-items: center;     /* Căn giữa theo chiều dọc */
+    }
+
+    #splash-screen img {
+        width: 150px; /* Chiều rộng của logo */
+        height: auto;
+    }
     </style>
     <script>
         (function () {
@@ -79,7 +98,9 @@
     </script>
 </head>
 <body>
-
+<div id="splash-screen">
+        <img src="my_logo.png" alt="Ready to Cast">>
+    </div>
 <div id="player"></div>
 <div id="overlay-container"><div id="viewer-overlay"></div></div>
 <div id="reward-overlay"></div>
@@ -158,6 +179,11 @@ context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
 });
 
 function loadVideoFromMessage(media) {
+const splash = document.getElementById('splash-screen');
+    if (splash) {
+        splash.style.display = 'none';
+    }
+
     const videoId = media.contentId;
     const customData = media.customData || {};
 
