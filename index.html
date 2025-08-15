@@ -21,53 +21,46 @@
             will-change: transform; opacity: 0;
         }
         #reward-overlay {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    background-color: rgba(0, 0, 0, 0.85);
-    font-weight: bold;
-    font-size: 36px; /* Cỡ chữ cơ bản cho dòng 1 & 2 */
-    padding: 30px 60px; border-radius: 15px;
-    opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
-    z-index: 1000;
-    width: 80vw;
-    box-sizing: border-box;
-}
-
-/* <<< LỚP MỚI CHO DÒNG 1 VÀ 2 >>> */
-.reward-text-blue {
-    color: #00008B; /* Màu xanh lam đậm (Dark Blue) */
-    display: block;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* <<< LỚP ĐƯỢC CẬP NHẬT CHO DÒNG 3 >>> */
-.reward-score-red {
-    font-size: 72px;  /* Cỡ chữ gấp đôi (36px * 2) */
-    font-weight: bold;
-    color: #FF0000;   /* Màu đỏ (Red) */
-    line-height: 1.1;
-    margin-top: 8px;
-}
-#splash-screen {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: #000;
-        z-index: 999; /* Đảm bảo nó nằm trên cùng */
-
-        /* Dùng Flexbox để căn giữa nội dung một cách hoàn hảo */
-        display: flex;
-        justify-content: center; /* Căn giữa theo chiều ngang */
-        align-items: center;     /* Căn giữa theo chiều dọc */
-    }
-
-    #splash-screen img {
-        width: 150px; /* Chiều rộng của logo */
-        height: auto;
-    }
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85);
+            font-weight: bold;
+            font-size: 36px;
+            padding: 30px 60px; border-radius: 15px;
+            opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
+            z-index: 1000;
+            width: 80vw;
+            box-sizing: border-box;
+        }
+        .reward-text-blue {
+            color: #00008B;
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .reward-score-red {
+            font-size: 72px;
+            font-weight: bold;
+            color: #FF0000;
+            line-height: 1.1;
+            margin-top: 8px;
+        }
+        #splash-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            z-index: 999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #splash-screen img {
+            width: 250px; /* Tăng kích thước logo một chút cho cân đối */
+            height: auto;
+        }
     </style>
     <script>
         (function () {
@@ -75,7 +68,6 @@
             function injectKeyframes(distance) {
                 if (!styleEl) {
                     styleEl = document.createElement('style');
-                    styleEl.id = 'marquee-style';
                     document.head.appendChild(styleEl);
                 }
                 styleEl.textContent = `@keyframes marqueeAnim { 0% { transform: translateX(0); } 100% { transform: translateX(${distance}px); } }`;
@@ -98,175 +90,170 @@
     </script>
 </head>
 <body>
-<div id="splash-screen">
-        <img src="my_logo.png" alt="Ready to Cast">>
+    <div id="splash-screen">
+        <img src="my_logo.png" alt="Ready to Cast">
     </div>
-<div id="player"></div>
-<div id="overlay-container"><div id="viewer-overlay"></div></div>
-<div id="reward-overlay"></div>
+    <div id="player"></div>
+    <div id="overlay-container"><div id="viewer-overlay"></div></div>
+    <div id="reward-overlay"></div>
 
-<script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-<script src="https://www.youtube.com/iframe_api"></script>
-<script>
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
     // <<< BẮT ĐẦU NỘI DUNG SCRIPT ĐÃ SỬA >>>
 
-const CUSTOM_NAMESPACE = "urn:x-cast:com-tranduyen-chieuyoutube-custom";
-const context = cast.framework.CastReceiverContext.getInstance();
-const playerManager = context.getPlayerManager();
-const viewerOverlay = document.getElementById('viewer-overlay');
-const rewardOverlay = document.getElementById('reward-overlay');
-let ytPlayer;
-let isYouTubeReady = false;
-let currentViewerName = null;
+    // <<< SỬA LỖI NGHIÊM TRỌNG: Namespace phải khớp với Service (dùng dấu chấm) >>>
+    const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.custom";
 
-function log(message) {
-    console.log('[YouTube Receiver]', message);
-}
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+    const viewerOverlay = document.getElementById('viewer-overlay');
+    const rewardOverlay = document.getElementById('reward-overlay');
+    let ytPlayer;
+    let isYouTubeReady = false;
+    let currentViewerName = null;
 
-window.onYouTubeIframeAPIReady = function() {
-    log('YouTube IFrame API ready');
-    ytPlayer = new YT.Player('player', {
-        height: '100%', width: '100%',
-        playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
-        events: { 
-            'onStateChange': onPlayerStateChange,
-            'onReady': onPlayerReady,
-            'onError': onPlayerError
+    function log(message) {
+        console.log('[YouTube Receiver]', message);
+    }
+
+    window.onYouTubeIframeAPIReady = function() {
+        log('YouTube IFrame API ready');
+        ytPlayer = new YT.Player('player', {
+            height: '100%', width: '100%',
+            playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
+            events: { 
+                'onStateChange': onPlayerStateChange,
+                'onReady': onPlayerReady,
+                'onError': onPlayerError
+            }
+        });
+    };
+
+    function onPlayerReady(event) {
+        log('YouTube Player ready');
+        isYouTubeReady = true;
+    }
+
+    function onPlayerError(event) {
+        // <<< SỬA LỖI: Lỗi chính tả nhỏ >>>
+        log(`Youtubeer error: ${event.data}`);
+    }
+
+    function onPlayerStateChange(event) {
+        log(`Player state: ${event.data}`);
+        if (event.data === YT.PlayerState.ENDED) {
+            log('Video ended. Displaying reward and setting a short delay.');
+            viewerOverlay.style.opacity = 0;
+            viewerOverlay.style.animation = "none";
+            
+            if (currentViewerName) {
+                showRewardMessage(currentViewerName);
+            }
+            
+            // <<< SỬA LỖI: Đặt lại thời gian chờ là 4.5 giây để chuyển bài nhanh >>>
+            setTimeout(() => {
+                log('Delay finished. Notifying sender to play next video.');
+                const message = { type: "VIDEO_ENDED" };
+                context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
+            }, 4500); // 4.5 giây
+        }
+    }
+
+    context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
+        const data = event.data;
+        log(`Received custom message: ${JSON.stringify(data)}`);
+        
+        if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
+            if (data.media) {
+                log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
+                loadVideoFromMessage(data.media);
+            }
         }
     });
-};
 
-function onPlayerReady(event) {
-    log('YouTube Player ready');
-    isYouTubeReady = true;
-}
+    function loadVideoFromMessage(media) {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            splash.style.display = 'none';
+        }
 
-function onPlayerError(event) {
-    log(`Youtubeer error: ${event.data}`);
-}
+        const videoId = media.contentId;
+        const customData = media.customData || {};
 
-// <<< SỬA LẠI onPlayerStateChange VỚI THỜI GIAN CHỜ HỢP LÝ >>>
-function onPlayerStateChange(event) {
-    log(`Player state: ${event.data}`);
-    if (event.data === YT.PlayerState.ENDED) {
-        log('Video ended. Displaying reward and setting a short delay.');
-        viewerOverlay.style.opacity = 0;
-        viewerOverlay.style.animation = "none";
-        
+        if (isYouTubeReady && ytPlayer && videoId) {
+            ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+        }
+
+        currentViewerName = customData.viewerName;
         if (currentViewerName) {
-            showRewardMessage(currentViewerName);
-        }
-        
-        // Đợi 9 giây để người dùng xem thông báo rồi mới báo cho ViewModel
-        setTimeout(() => {
-            log('Delay finished. Notifying sender to play next video.');
-            const message = { type: "VIDEO_ENDED" };
-            context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
-        }, 4500); // 4500 mili-giây = 4.5 giây
-    }
-}
-
-context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
-    const data = event.data;
-    log(`Received custom message: ${JSON.stringify(data)}`);
-    
-    if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
-        if (data.media) {
-            log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
-            loadVideoFromMessage(data.media);
-        }
-    }
-});
-
-function loadVideoFromMessage(media) {
-const splash = document.getElementById('splash-screen');
-    if (splash) {
-        splash.style.display = 'none';
-    }
-
-    const videoId = media.contentId;
-    const customData = media.customData || {};
-
-    if (isYouTubeReady && ytPlayer && videoId) {
-        ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
-    }
-
-    currentViewerName = customData.viewerName;
-    if (currentViewerName) {
-        viewerOverlay.textContent = `Ca sỹ trình bày: ${currentViewerName}`;
-        viewerOverlay.style.opacity = 1;
-        setTimeout(setMarquee, 0);
-    } else {
-        viewerOverlay.textContent = "";
-        viewerOverlay.style.opacity = 0;
-        viewerOverlay.style.animation = "none";
-    }
-}
-
-playerManager.setMessageInterceptor(
-    cast.framework.messages.MessageType.LOAD,
-    loadRequestData => {
-        log('Standard LOAD command received for the first video.');
-        if (loadRequestData.media) {
-            loadVideoFromMessage(loadRequestData.media);
-        }
-        return null;
-    }
-);
-
-playerManager.setMessageInterceptor(
-    cast.framework.messages.MessageType.PLAY,
-    () => { if (ytPlayer) ytPlayer.playVideo(); return null; }
-);
-
-playerManager.setMessageInterceptor(
-    cast.framework.messages.MessageType.PAUSE,
-    () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
-);
-
-// <<< GIỮ LẠI DUY NHẤT PHIÊN BẢN ĐÚNG CỦA showRewardMessage >>>
-function showRewardMessage(viewerName) {
-    const startScore = 20;
-    const finalScore = Math.floor(Math.random() * 11) + 90; // Ngẫu nhiên 90-100
-    let currentScore = startScore;
-
-    // <<< CẬP NHẬT CẤU TRÚC HTML VỚI CÁC LỚP CSS MỚI >>>
-    rewardOverlay.innerHTML =
-        // Dòng 1 & 2 dùng class màu xanh lam đậm
-        `<div class="reward-text-blue">Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,</div>` +
-        `<div class="reward-text-blue">điểm khen ngợi</div>` +
-        // Dòng 3 dùng class màu đỏ chữ to
-        `<div class="reward-score-red"><span id="score-counter">${startScore}</span> điểm</div>`;
-
-    const scoreElement = document.getElementById('score-counter');
-
-    rewardOverlay.style.opacity = 1;
-    log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
-
-    // Logic đếm số không đổi
-    const counterInterval = setInterval(() => {
-        if (currentScore < finalScore) {
-            currentScore++;
-            scoreElement.textContent = currentScore;
+            viewerOverlay.textContent = `Ca sỹ trình bày: ${currentViewerName}`;
+            viewerOverlay.style.opacity = 1;
+            setTimeout(setMarquee, 0);
         } else {
-            clearInterval(counterInterval);
+            viewerOverlay.textContent = "";
+            viewerOverlay.style.opacity = 0;
+            viewerOverlay.style.animation = "none";
         }
-    }, 50);
+    }
 
-    // Thời gian hiển thị 10 giây không đổi
-    setTimeout(() => {
-        rewardOverlay.style.opacity = 0;
-        clearInterval(counterInterval);
-        log('Reward message hidden');
-    }, 7); // 7 giây
-}
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.LOAD,
+        loadRequestData => {
+            log('Standard LOAD command received for the first video.');
+            if (loadRequestData.media) {
+                loadVideoFromMessage(loadRequestData.media);
+            }
+            return null;
+        }
+    );
 
-const options = new cast.framework.CastReceiverOptions();
-options.disableIdleTimeout = true;
-context.start(options);
-log('Cast receiver started');
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.PLAY,
+        () => { if (ytPlayer) ytPlayer.playVideo(); return null; }
+    );
 
-// <<< KẾT THÚC NỘI DUNG SCRIPT ĐÃ SỬA >>>
-</script>
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.PAUSE,
+        () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
+    );
+
+    function showRewardMessage(viewerName) {
+        const startScore = 20;
+        const finalScore = Math.floor(Math.random() * 11) + 90;
+        let currentScore = startScore;
+
+        rewardOverlay.innerHTML =
+            `<div class="reward-text-blue">Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,</div>` +
+            `<div class="reward-text-blue">điểm khen ngợi</div>` +
+            `<div class="reward-score-red"><span id="score-counter">${startScore}</span> điểm</div>`;
+
+        const scoreElement = document.getElementById('score-counter');
+        rewardOverlay.style.opacity = 1;
+        log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
+
+        const counterInterval = setInterval(() => {
+            if (currentScore < finalScore) {
+                currentScore++;
+                scoreElement.textContent = currentScore;
+            } else {
+                clearInterval(counterInterval);
+            }
+        }, 50);
+
+        // <<< SỬA LỖI: Đặt lại thời gian hiển thị là 10 giây >>>
+        setTimeout(() => {
+            rewardOverlay.style.opacity = 0;
+            clearInterval(counterInterval);
+            log('Reward message hidden');
+        }, 7000); // 7 giây
+    }
+
+    const options = new cast.framework.CastReceiverOptions();
+    options.disableIdleTimeout = true;
+    context.start(options);
+    log('Cast receiver started');
+
+    </script>
 </body>
 </html>
