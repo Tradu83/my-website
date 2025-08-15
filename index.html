@@ -40,6 +40,9 @@
             font-weight: bold; font-size: 48px; padding: 30px 60px;
             border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
             text-align: center; z-index: 1000;
+            white-space: pre-line; /* Cho phép xuống dòng theo \n */
+            line-height: 1.2; /* Khoảng cách giữa các dòng */
+            min-width: 600px; /* Đảm bảo đủ rộng cho 2 dòng */
         }
     </style>
 	<script>
@@ -238,6 +241,7 @@
         cast.framework.messages.MessageType.QUEUE_UPDATE,
         queueUpdateData => {
             log('QUEUE_UPDATE command received');
+            log('Queue update data:', queueUpdateData);
             const currentItem = queueManager.getCurrentItem();
             if (currentItem) {
                 const videoId = currentItem.media.contentId;
@@ -253,17 +257,20 @@
                 } catch (e) {
                     log('Failed to send status update message: ' + e.message);
                 }
+            } else {
+                log('No current item found in queue update');
             }
             return null;
         }
     );
 
-    // Chỉ giữ lại chức năng chọn video trực tiếp từ danh sách
+    // Xử lý custom message từ app
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
         log(`Received custom message: ${JSON.stringify(data)}`);
-        log(`Message type: ${typeof data}, cmd: ${data?.cmd}`);
+        log(`Message type: ${typeof data}, cmd: ${data?.cmd}, event: ${data?.event}`);
         
+        // Xử lý playById command
         if (data && data.cmd === "playById") {
             log(`Play by ID command: ${data.videoId}`);
             const queue = queueManager.getQueue();
@@ -296,6 +303,16 @@
                 log('Queue is empty - cannot find video');
             }
         }
+        
+        // Xử lý syncQueue event
+        else if (data && data.event === "syncQueue") {
+            log(`Sync queue event received with ${data.queue?.length || 0} items`);
+            if (data.currentVideoId) {
+                log(`Current video from sync: ${data.currentVideoId}`);
+                // Có thể cập nhật thông tin hiện tại nếu cần
+            }
+        }
+        
         // Đã loại bỏ chức năng playNext và setRepeatMode
     });
 
@@ -303,7 +320,7 @@
         if (item?.media?.customData?.viewerName) {
             const viewerName = item.media.customData.viewerName;
             const score = Math.floor(Math.random() * 11) + 90;
-            rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi ${score} điểm.`;
+            rewardOverlay.textContent = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt!\nĐiểm khen ngợi ${score} điểm.`;
             rewardOverlay.style.opacity = 1;
             log(`Showing reward message for ${viewerName} with score ${score}`);
             setTimeout(() => { 
