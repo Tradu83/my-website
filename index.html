@@ -9,77 +9,88 @@
             background-color: #000; overflow: hidden;
         }
         #player { width: 100vw; height: 100vh; }
+		
+      		/* Vùng chứa cho dòng chữ chạy */
         #overlay-container {
-            position: absolute; top: 20px; left: 0;
-            width: 100%; overflow: hidden;
-            pointer-events: none; z-index: 2;
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            overflow: hidden;      /* Ẩn phần vượt khung */
+            pointer-events: none;  /* Cho phép click xuyên qua */
+            z-index: 2;            /* Hiển thị trên video */
         }
+        /* Dòng chữ chạy */
         #viewer-overlay {
-            color: #CC0000; font-weight: bold; font-family: sans-serif;
-            font-size: 40px; text-shadow: 1px 1px 2px #000;
-            display: inline-block; white-space: nowrap;
-            will-change: transform; opacity: 0;
+            color: #CC0000;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 40px;
+            text-shadow: 1px 1px 2px #000;
+            display: inline-block;
+            white-space: nowrap;
+            will-change: transform; /* Tối ưu hiệu suất */
+            opacity: 0;             /* Ẩn khi chưa có nội dung */
         }
         #reward-overlay {
-		position: absolute; top: 50%; left: 50%; transform: translate(--50%, -50%);
-		background-color: rgba(0, 0, 0, 0.85); color: #FF0000; font-weight: bold;
-		/* Giảm cỡ chữ cơ bản một chút để cân đối hơn */
-		font-size: 36px; 
-		padding: 30px 60px; border-radius: 15px;
-		opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
-		z-index: 1000;
-		width: 80vw;
-		box-sizing: border-box;
-		}
-
-		/* Thêm lớp CSS mới này vào */
-		.reward-score {
-		font-size: 72px;  /* Cỡ chữ gấp đôi (36px * 2) */
-		font-weight: bold;
-		color: #FFFF00;   /* Màu vàng cho nổi bật */
-		line-height: 1.1; /* Giảm khoảng cách dòng cho chữ lớn */
-		margin-top: 8px;  /* Tạo chút khoảng cách với dòng phía trên */
-		}
-
-		.single-line-ellipsis {
-		display: block;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		}
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
+            font-weight: bold; font-size: 48px; padding: 30px 60px;
+            border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
+            text-align: center; z-index: 1000;
+        }
     </style>
-    <script>
-        (function () {
-            let styleEl;
-            function injectKeyframes(distance) {
-                if (!styleEl) {
-                    styleEl = document.createElement('style');
-                    styleEl.id = 'marquee-style';
-                    document.head.appendChild(styleEl);
-                }
-                styleEl.textContent = `@keyframes marqueeAnim { 0% { transform: translateX(0); } 100% { transform: translateX(${distance}px); } }`;
+	<script>
+    // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
+    (function () {
+        let styleEl;
+        function injectKeyframes(distance) {
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'marquee-style';
+                document.head.appendChild(styleEl);
             }
-            window.setMarquee = function () {
-                const textEl = document.getElementById('viewer-overlay');
-                if (!textEl) return;
-                const screenWidth = window.innerWidth;
-                const textWidth = textEl.scrollWidth;
-                const distance = screenWidth - textWidth;
-                const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
-                injectKeyframes(distance);
-                textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
-            };
-            window.addEventListener('resize', () => {
-                clearTimeout(window.__marqueeResizeTimer);
-                window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
-            });
-        })();
+            styleEl.textContent = `
+                @keyframes marqueeAnim {
+                    0% { transform: translateX(0); }
+                    100% { transform: translateX(${distance}px); }
+                }
+            `;
+        }
+
+        // Public để có thể gọi lại sau khi cập nhật nội dung
+        window.setMarquee = function () {
+            const textEl = document.getElementById('viewer-overlay');
+            if (!textEl) return;
+
+            // đo kích thước thực
+            const screenWidth = window.innerWidth;
+            const textWidth = textEl.scrollWidth;
+
+            // Khoảng di chuyển: dương nếu chữ ngắn hơn màn hình, âm nếu dài hơn
+            const distance = screenWidth - textWidth;
+
+            // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
+            const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
+
+            injectKeyframes(distance);
+            textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
+        };
+
+        // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
+        window.addEventListener('resize', () => {
+            clearTimeout(window.__marqueeResizeTimer);
+            window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
+        });
+    })();
     </script>
 </head>
 <body>
 
 <div id="player"></div>
-<div id="overlay-container"><div id="viewer-overlay"></div></div>
+<div id="overlay-container">
+        <div id="viewer-overlay"></div>
+    </div>
 <div id="reward-overlay"></div>
 
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -87,7 +98,7 @@
 <script>
     // <<< BẮT ĐẦU NỘI DUNG SCRIPT ĐÃ SỬA >>>
 
-const CUSTOM_NAMESPACE = "urn:x-cast:com-tranduyen-chieuyoutube-custom";
+const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.custom";
 const context = cast.framework.CastReceiverContext.getInstance();
 const playerManager = context.getPlayerManager();
 const viewerOverlay = document.getElementById('viewer-overlay');
@@ -122,7 +133,6 @@ function onPlayerError(event) {
     log(`Youtubeer error: ${event.data}`);
 }
 
-// <<< SỬA LẠI onPlayerStateChange VỚI THỜI GIAN CHỜ HỢP LÝ >>>
 function onPlayerStateChange(event) {
     log(`Player state: ${event.data}`);
     if (event.data === YT.PlayerState.ENDED) {
@@ -134,12 +144,11 @@ function onPlayerStateChange(event) {
             showRewardMessage(currentViewerName);
         }
         
-        // Đợi 9 giây để người dùng xem thông báo rồi mới báo cho ViewModel
         setTimeout(() => {
             log('Delay finished. Notifying sender to play next video.');
             const message = { type: "VIDEO_ENDED" };
             context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
-        }, 9000); // 9000 mili-giây = 9 giây
+        }, 9000); // 9 giây
     }
 }
 
@@ -150,11 +159,13 @@ context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
     if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
         if (data.media) {
             log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
+            // Bây giờ hàm này đã tồn tại và sẽ được gọi đúng
             loadVideoFromMessage(data.media);
         }
     }
 });
 
+// <<< KHÔI PHỤC LẠI HÀM loadVideoFromMessage BỊ THIẾU >>>
 function loadVideoFromMessage(media) {
     const videoId = media.contentId;
     const customData = media.customData || {};
@@ -196,10 +207,9 @@ playerManager.setMessageInterceptor(
     () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
 );
 
-// <<< GIỮ LẠI DUY NHẤT PHIÊN BẢN ĐÚNG CỦA showRewardMessage >>>
 function showRewardMessage(viewerName) {
     const startScore = 20;
-    const finalScore = Math.floor(Math.random() * 11) + 90; // Ngẫu nhiên 90-100
+    const finalScore = Math.floor(Math.random() * 11) + 90;
     let currentScore = startScore;
 
     rewardOverlay.innerHTML =
@@ -220,12 +230,11 @@ function showRewardMessage(viewerName) {
         }
     }, 50);
 
-    // Thời gian hiển thị là 10 giây
     setTimeout(() => {
         rewardOverlay.style.opacity = 0;
         clearInterval(counterInterval);
         log('Reward message hidden');
-    }, 10000); // 10000 mili-giây = 10 giây
+    }, 10000); // 10 giây
 }
 
 const options = new cast.framework.CastReceiverOptions();
