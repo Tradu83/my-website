@@ -113,6 +113,9 @@
 <body>
     <div id="splash-screen">
     <img src="my_logo.png" alt="Ready to Cast">
+	<p style="color: white; font-size: 30px; font-weight: bold; text-shadow: 1px 1px 3px black; margin-top: 20px;">
+        CHƯƠNG TRÌNH HÁT KARAOKE BY TRẦN DUYÊN
+    </p>
 </div>
 </div>
     <div id="player"></div>
@@ -134,7 +137,11 @@
     let ytPlayer;
     let isYouTubeReady = false;
     let currentViewerName = null;
+	// <<< THAY ĐỔI 1: Tạo đối tượng Audio để chuẩn bị file nhạc >>>
+	const rewardAudio = new Audio('music.mp3'); 
 
+	let progressInterval = null;
+	let isRewardShown = false;
     function log(message) {
         console.log('[YouTube Receiver]', message);
     }
@@ -203,6 +210,9 @@
     });
 
     function loadVideoFromMessage(media) {
+	// <<< THAY ĐỔI 3: Dừng và reset nhạc khen thưởng khi video mới bắt đầu >>>
+    rewardAudio.pause();
+    rewardAudio.currentTime = 0;
         const splash = document.getElementById('splash-screen');
         if (splash) {
             splash.style.display = 'none';
@@ -261,7 +271,9 @@
         const scoreElement = document.getElementById('score-counter');
         rewardOverlay.style.opacity = 1;
         log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
-
+		// <<< THAY ĐỔI 2: Phát nhạc khi thông báo hiển thị >>>
+		rewardAudio.currentTime = 0; // Tua về đầu để đảm bảo nhạc phát từ đầu
+		rewardAudio.play();
         const counterInterval = setInterval(() => {
             if (currentScore < finalScore) {
                 currentScore++;
