@@ -9,123 +9,82 @@
             background-color: #000; overflow: hidden;
         }
         #player { width: 100vw; height: 100vh; }
-		
-      		/* Vùng chứa cho dòng chữ chạy */
         #overlay-container {
-            position: absolute;
-            top: 20px;
-            left: 0;
-            width: 100%;
-            overflow: hidden;      /* Ẩn phần vượt khung */
-            pointer-events: none;  /* Cho phép click xuyên qua */
-            z-index: 2;            /* Hiển thị trên video */
+            position: absolute; top: 20px; left: 0;
+            width: 100%; overflow: hidden;
+            pointer-events: none; z-index: 2;
         }
-        /* Dòng chữ chạy */
         #viewer-overlay {
-            color: #CC0000;
-            font-weight: bold;
-            font-family: sans-serif;
-            font-size: 40px;
-            text-shadow: 1px 1px 2px #000;
-            display: block;
-            white-space: nowrap;
-            will-change: transform; /* Tối ưu hiệu suất */
-            opacity: 0;             /* Ẩn khi chưa có nội dung */
-            position: relative;
-            left: 0;
+            color: #CC0000; font-weight: bold; font-family: sans-serif;
+            font-size: 40px; text-shadow: 1px 1px 2px #000;
+            display: inline-block; white-space: nowrap;
+            will-change: transform; opacity: 0;
         }
         #reward-overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.85); color: #FF0000;
-            font-weight: bold; font-size: 48px; padding: 30px 60px;
-            border-radius: 15px; opacity: 0; transition: opacity 0.5s ease-in-out;
-            text-align: center; z-index: 1000;
-            white-space: pre-line; /* Cho phép xuống dòng theo \n */
-            line-height: 1.2; /* Khoảng cách giữa các dòng */
-            min-width: 600px; /* Đảm bảo đủ rộng cho 2 dòng */
-        }
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.85); color: #FF0000; font-weight: bold;
+    font-size: 48px; padding: 30px 60px; border-radius: 15px;
+    opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
+    z-index: 1000;
+    
+    /* === THÊM 2 DÒNG NÀY VÀO === */
+    width: 80vw; /* Chiều rộng bằng 80% chiều rộng màn hình */
+    box-sizing: border-box; /* Đảm bảo padding nằm bên trong width */
+}
     </style>
-	<script>
-    // ----- Marquee động: chạy qua lại giữa 2 mép màn hình cho mọi độ dài chữ -----
-    (function () {
-        let styleEl;
-        function injectKeyframes(distance) {
-            if (!styleEl) {
-                styleEl = document.createElement('style');
-                styleEl.id = 'marquee-style';
-                document.head.appendChild(styleEl);
-            }
-            styleEl.textContent = `
-                @keyframes marqueeAnim {
-                    0% { transform: translateX(0); }
-                    100% { transform: translateX(${distance}px); }
+    <script>
+        (function () {
+            let styleEl;
+            function injectKeyframes(distance) {
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    styleEl.id = 'marquee-style';
+                    document.head.appendChild(styleEl);
                 }
-            `;
-            console.log('[Marquee] Keyframes injected:', styleEl.textContent);
-        }
-
-        // Public để có thể gọi lại sau khi cập nhật nội dung
-        window.setMarquee = function () {
-            const textEl = document.getElementById('viewer-overlay');
-            if (!textEl) {
-                console.log('[Marquee] Text element not found');
-                return;
+                styleEl.textContent = `@keyframes marqueeAnim { 0% { transform: translateX(0); } 100% { transform: translateX(${distance}px); } }`;
             }
-
-            // đo kích thước thực
-            const screenWidth = window.innerWidth;
-            const textWidth = textEl.scrollWidth;
-            
-            console.log('[Marquee] Screen width:', screenWidth, 'Text width:', textWidth);
-
-            // Khoảng di chuyển: luôn chạy từ trái sang phải
-            const distance = -(screenWidth + textWidth);
-            
-            // Tốc độ tỉ lệ theo quãng đường, có chặn min/max để dễ nhìn
-            const duration = Math.max(8000, Math.min(30000, Math.abs(distance) * 8));
-            
-            console.log('[Marquee] Distance:', distance, 'Duration:', duration);
-
-            injectKeyframes(distance);
-            textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
-            
-            console.log('[Marquee] Animation applied:', textEl.style.animation);
-        };
-
-        // Debounce resize để cập nhật lại quỹ đạo khi đổi kích thước màn hình
-        window.addEventListener('resize', () => {
-            clearTimeout(window.__marqueeResizeTimer);
-            window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
-        });
-    })();
+            window.setMarquee = function () {
+                const textEl = document.getElementById('viewer-overlay');
+                if (!textEl) return;
+                const screenWidth = window.innerWidth;
+                const textWidth = textEl.scrollWidth;
+                const distance = screenWidth - textWidth;
+                const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
+                injectKeyframes(distance);
+                textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
+            };
+            window.addEventListener('resize', () => {
+                clearTimeout(window.__marqueeResizeTimer);
+                window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
+            });
+        })();
     </script>
 </head>
 <body>
 
 <div id="player"></div>
-<div id="overlay-container">
-        <div id="viewer-overlay"></div>
-    </div>
+<div id="overlay-container"><div id="viewer-overlay"></div></div>
 <div id="reward-overlay"></div>
 
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-    const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.control";
+    // === 1. THAY ĐỔI NAMESPACE ĐỂ KHỚP VỚI VIEWMODEL MỚI ===
+    const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.custom";
+    
     const context = cast.framework.CastReceiverContext.getInstance();
     const playerManager = context.getPlayerManager();
-    const queueManager = playerManager.getQueueManager();
     const viewerOverlay = document.getElementById('viewer-overlay');
     const rewardOverlay = document.getElementById('reward-overlay');
     let ytPlayer;
     let isYouTubeReady = false;
-    let currentVideoId = null;
+    let currentViewerName = null; // Lưu tên ca sỹ hiện tại để hiển thị khen thưởng
 
     function log(message) {
         console.log('[YouTube Receiver]', message);
     }
 
-    // YouTube Player - giống hệt test_cast_receiver.html
+    // --- Thiết lập YouTube Player ---
     window.onYouTubeIframeAPIReady = function() {
         log('YouTube IFrame API ready');
         ytPlayer = new YT.Player('player', {
@@ -145,216 +104,137 @@
     }
 
     function onPlayerError(event) {
-        log(`YouTube Player error: ${event.data}`);
+        log(`Youtubeer error: ${event.data}`);
     }
 
-    function onPlayerStateChange(event) {
-        log(`Player state: ${event.data}`);
-        if (event.data === YT.PlayerState.ENDED) {
-            log('Video ended');
-            viewerOverlay.style.opacity = 0;
-            
-            // Show reward message if available
-            const currentItem = queueManager.getCurrentItem();
-            if (currentItem?.media?.customData?.viewerName) {
-                showRewardMessage(currentItem);
+    // === 2. ĐƠN GIẢN HÓA LOGIC KHI VIDEO KẾT THÚC ===
+    // Receiver chỉ cần báo cáo là video đã kết thúc, không tự quyết định chuyển bài nữa.
+    // --- SAU KHI SỬA ---
+function onPlayerStateChange(event) {
+    log(`Player state: ${event.data}`);
+    if (event.data === YT.PlayerState.ENDED) {
+        log('Video ended. Displaying reward and setting a delay before notifying sender.');
+        viewerOverlay.style.opacity = 0;
+        viewerOverlay.style.animation = "none";
+        
+        // Hiển thị khen thưởng nếu có
+        if (currentViewerName) {
+            showRewardMessage(currentViewerName);
+        }
+        
+        // <<< THAY ĐỔI QUAN TRỌNG Ở ĐÂY >>>
+        // Đợi 3 giây để người dùng xem thông báo rồi mới báo cho ViewModel
+        setTimeout(() => {
+            log('Delay finished. Notifying sender to play next video.');
+            const message = { type: "VIDEO_ENDED" };
+            context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
+        }, 4000); // 4000 mili-giây = 4 giây
+    }
+}
+
+    // === 3. VIẾT LẠI HOÀN TOÀN BỘ LẮNG NGHE LỆNH TÙY CHỈNH ===
+    // Chỉ lắng nghe các lệnh mà ViewModel mới gửi: JUMP_TO và PLAY_NEXT
+    context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
+        const data = event.data;
+        log(`Received custom message: ${JSON.stringify(data)}`);
+        
+        // Cả hai lệnh JUMP_TO và PLAY_NEXT đều có cùng cấu trúc và hành động
+        if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
+            if (data.media) {
+                log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
+                loadVideoFromMessage(data.media);
             }
-            
-            // Auto advance to next video after delay
-            setTimeout(() => {
-                const nextItem = queueManager.getNextItem();
-                const currentIndex = queueManager.getCurrentItemIndex();
-                const queueLength = queueManager.getQueue().length;
-                log(`Auto advance check - currentIndex: ${currentIndex}, queueLength: ${queueLength}, nextItem: ${nextItem ? 'exists' : 'null'}`);
-                
-                if (nextItem) {
-                    log('Auto advancing to next item');
-                    queueManager.jumpToItem(currentIndex + 1);
-                    
-                    // Gửi thông báo về app để cập nhật currentlyPlayingVideoId
-                    const nextVideoId = nextItem.media.contentId;
-                    try {
-                        context.sendCustomMessage(CUSTOM_NAMESPACE, JSON.stringify({
-                            type: "statusUpdate",
-                            currentlyPlayingVideoId: nextVideoId
-                        }));
-                        log('Status update message sent to app for auto advance');
-                    } catch (e) {
-                        log('Failed to send status update message: ' + e.message);
-                    }
-                } else {
-                    log('No next item available - end of queue reached');
-                }
-            }, 2000);
-        } else if (event.data === YT.PlayerState.PLAYING) {
-            log('Video started playing');
+        }
+    });
+
+    // Hàm trợ giúp để tải video từ tin nhắn (dùng cho JUMP_TO và PLAY_NEXT)
+    function loadVideoFromMessage(media) {
+        const videoId = media.contentId;
+        const customData = media.customData || {};
+        
+        if (isYouTubeReady && ytPlayer && videoId) {
+            log(`Loading video from custom message: ${videoId}`);
+            ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+        }
+        
+        currentViewerName = customData.viewerName; // Cập nhật tên ca sỹ
+        if (currentViewerName) {
+            viewerOverlay.textContent = `Ca sỹ trình bày: ${currentViewerName}`;
+            viewerOverlay.style.opacity = 1;
+            setTimeout(setMarquee, 0); // Đặt marquee sau khi nội dung đã được render
+        } else {
+            viewerOverlay.textContent = "";
+            viewerOverlay.style.opacity = 0;
+            viewerOverlay.style.animation = "none";
         }
     }
 
-    // Cast Message Interceptors - giống hệt test_cast_receiver.html
+    // --- Xử lý các lệnh Cast chuẩn ---
+    // Lệnh LOAD vẫn cần thiết cho lần phát đầu tiên do ViewModel gọi remoteMediaClient.load()
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.LOAD,
         loadRequestData => {
-            const media = loadRequestData.media;
-            const videoId = media.contentId;
-            const customData = media.customData || {};
-            
-            log(`LOAD command received: ${videoId}`);
-            currentVideoId = videoId;
-            
-            if (isYouTubeReady && ytPlayer && videoId) {
-                log(`Loading video: ${videoId}`);
-                ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd1080' });
-            } else {
-                log('YouTube player not ready for LOAD');
+            log('Standard LOAD command received for the first video.');
+            if (loadRequestData.media) {
+                loadVideoFromMessage(loadRequestData.media);
             }
-            
-            // Show viewer name if available
-            if (customData.viewerName) {
-                viewerOverlay.textContent = `Ca sỹ trình bày: ${customData.viewerName}`;
-                viewerOverlay.style.opacity = 1;
-                console.log('[Marquee] Setting marquee for viewer:', customData.viewerName);
-                window.setMarquee(); // Cập nhật animation cho dòng chữ mới
-            } else {
-                viewerOverlay.textContent = "";
-                viewerOverlay.style.opacity = 0;
-                console.log('[Marquee] No viewer name, hiding overlay');
-            }
-            
-            return null;
+            return null; // Chặn xử lý mặc định
         }
     );
 
     playerManager.setMessageInterceptor(
         cast.framework.messages.MessageType.PLAY,
-        () => { 
-            log('PLAY command received');
-            if (isYouTubeReady && ytPlayer) {
-                ytPlayer.playVideo();
-            }
-            return null; 
-        }
+        () => { if (ytPlayer) ytPlayer.playVideo(); return null; }
     );
 
-    // Thêm message interceptor cho QUEUE_UPDATE để đồng bộ trạng thái
     playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.QUEUE_UPDATE,
-        queueUpdateData => {
-            log('QUEUE_UPDATE command received');
-            log('Queue update data:', queueUpdateData);
-            const currentItem = queueManager.getCurrentItem();
-            if (currentItem) {
-                const videoId = currentItem.media.contentId;
-                log(`Current video changed to: ${videoId}`);
-                // Gửi thông báo về app để cập nhật currentlyPlayingVideoId
-                try {
-                    const message = JSON.stringify({
-                        type: "statusUpdate",
-                        currentlyPlayingVideoId: videoId
-                    });
-                    context.sendCustomMessage(CUSTOM_NAMESPACE, message);
-                    log('Status update message sent to app: ' + message);
-                } catch (e) {
-                    log('Failed to send status update message: ' + e.message);
-                }
-            } else {
-                log('No current item found in queue update');
-            }
-            return null;
-        }
+        cast.framework.messages.MessageType.PAUSE,
+        () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
     );
 
-    // Xử lý custom message từ app
-    context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
-        const data = event.data;
-        log(`Received custom message: ${JSON.stringify(data)}`);
-        log(`Message type: ${typeof data}, cmd: ${data?.cmd}, event: ${data?.event}`);
-        
-        // Xử lý playById command
-        if (data && data.cmd === "playById") {
-            log(`Play by ID command: ${data.videoId}`);
-            const queue = queueManager.getQueue();
-            log(`Queue length: ${queue.length}, searching for videoId: ${data.videoId}`);
-            
-            for (let i = 0; i < queue.length; i++) {
-                const item = queue[i];
-                const itemVideoId = item.media.contentId;
-                log(`Checking item ${i}: ${itemVideoId}`);
-                
-                if (itemVideoId === data.videoId) {
-                    log(`Found video at index ${i}, jumping to it`);
-                    queueManager.jumpToItem(i);
-                    
-                    // Gửi thông báo về app để cập nhật currentlyPlayingVideoId
-                    try {
-                        context.sendCustomMessage(CUSTOM_NAMESPACE, JSON.stringify({
-                            type: "statusUpdate",
-                            currentlyPlayingVideoId: data.videoId
-                        }));
-                        log('Status update message sent to app for playById');
-                    } catch (e) {
-                        log('Failed to send status update message: ' + e.message);
-                    }
-                    break;
-                }
-            }
-            
-            if (queue.length === 0) {
-                log('Queue is empty - cannot find video');
-            }
-        }
-        
-        // Xử lý syncQueue event
-        else if (data && data.event === "syncQueue") {
-            log(`Sync queue event received with ${data.queue?.length || 0} items`);
-            if (data.currentVideoId) {
-                log(`Current video from sync: ${data.currentVideoId}`);
-                // Có thể cập nhật thông tin hiện tại nếu cần
-            }
-        }
-        
-        // Đã loại bỏ chức năng playNext và setRepeatMode
-    });
+    // === 4. LOẠI BỎ CÁC HÀM KHÔNG CẦN THIẾT ===
+    // Các hàm sendCurrentStatus, handleQueueAdvance đã bị loại bỏ vì Sender quản lý hết.
+    
+    function showRewardMessage(viewerName) {
+    const startScore = 80;
+    const finalScore = Math.floor(Math.random() * 11) + 90; // Tạo số ngẫu nhiên từ 90-100
+    let currentScore = startScore;
 
-    function showRewardMessage(item) {
-        if (item?.media?.customData?.viewerName) {
-            const viewerName = item.media.customData.viewerName;
-            const score = Math.floor(Math.random() * 11) + 90;
-            rewardOverlay.textContent = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt!\nĐiểm khen ngợi ${score} điểm.`;
-            rewardOverlay.style.opacity = 1;
-            log(`Showing reward message for ${viewerName} with score ${score}`);
-            setTimeout(() => { 
-                rewardOverlay.style.opacity = 0; 
-                log('Reward message hidden');
-            }, 4000);
-        }
-    }
+    // 1. Tạo cấu trúc HTML ban đầu với một thẻ <span> để chứa điểm số
+    //    Điều này cho phép chúng ta cập nhật chỉ riêng con số mà không ảnh hưởng đến phần còn lại.
+    rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi <span id="score-counter">${startScore}</span> điểm.`;
+    const scoreElement = document.getElementById('score-counter');
 
-    // Start Cast receiver
+    // 2. Hiển thị hộp thoại
+    rewardOverlay.style.opacity = 1;
+    log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
+
+    // 3. Bắt đầu hiệu ứng đếm số
+    const counterInterval = setInterval(() => {
+        // Nếu điểm hiện tại chưa bằng điểm cuối cùng thì tiếp tục đếm
+        if (currentScore < finalScore) {
+            currentScore++; // Tăng điểm lên 1
+            scoreElement.textContent = currentScore; // Cập nhật con số trên màn hình
+        } else {
+            // Nếu đã đếm tới nơi, dừng bộ đếm
+            clearInterval(counterInterval);
+        }
+    }, 50); // Tốc độ đếm: cập nhật số mới sau mỗi 50 mili-giây
+
+    // 4. Đặt hẹn giờ để ẩn toàn bộ thông báo sau 5 giây
+    setTimeout(() => {
+        rewardOverlay.style.opacity = 0;
+        // Đảm bảo dừng bộ đếm phòng trường hợp nó chưa dừng
+        clearInterval(counterInterval);
+        log('Reward message hidden');
+    }, 5000);
+}
+
+    // Khởi động Cast receiver
     const options = new cast.framework.CastReceiverOptions();
     options.disableIdleTimeout = true;
     context.start(options);
-    
     log('Cast receiver started');
-
-    window.addEventListener('load', () => {
-        log('Page loaded');
-        
-        // Test marquee functionality
-        setTimeout(() => {
-            console.log('[Marquee] Testing marquee functionality');
-            const testText = "Test marquee - Ca sỹ trình bày: Test User";
-            viewerOverlay.textContent = testText;
-            viewerOverlay.style.opacity = 1;
-            window.setMarquee();
-            
-            // Hide test after 5 seconds
-            setTimeout(() => {
-                viewerOverlay.style.opacity = 0;
-                console.log('[Marquee] Test completed');
-            }, 5000);
-        }, 2000);
-    });
 </script>
 </body>
 </html>
