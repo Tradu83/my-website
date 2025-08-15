@@ -85,61 +85,56 @@
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-    // === 1. THAY ĐỔI NAMESPACE ĐỂ KHỚP VỚI VIEWMODEL MỚI ===
-    const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.custom";
-    
-    const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
-    const viewerOverlay = document.getElementById('viewer-overlay');
-    const rewardOverlay = document.getElementById('reward-overlay');
-    let ytPlayer;
-    let isYouTubeReady = false;
-    let currentViewerName = null; // Lưu tên ca sỹ hiện tại để hiển thị khen thưởng
+    // <<< BẮT ĐẦU NỘI DUNG SCRIPT ĐÃ SỬA >>>
 
-    function log(message) {
-        console.log('[YouTube Receiver]', message);
-    }
+const CUSTOM_NAMESPACE = "urn:x-cast:com-tranduyen-chieuyoutube-custom";
+const context = cast.framework.CastReceiverContext.getInstance();
+const playerManager = context.getPlayerManager();
+const viewerOverlay = document.getElementById('viewer-overlay');
+const rewardOverlay = document.getElementById('reward-overlay');
+let ytPlayer;
+let isYouTubeReady = false;
+let currentViewerName = null;
 
-    // --- Thiết lập YouTube Player ---
-    window.onYouTubeIframeAPIReady = function() {
-        log('YouTube IFrame API ready');
-        ytPlayer = new YT.Player('player', {
-            height: '100%', width: '100%',
-            playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
-            events: { 
-                'onStateChange': onPlayerStateChange,
-                'onReady': onPlayerReady,
-                'onError': onPlayerError
-            }
-        });
-    };
+function log(message) {
+    console.log('[YouTube Receiver]', message);
+}
 
-    function onPlayerReady(event) {
-        log('YouTube Player ready');
-        isYouTubeReady = true;
-    }
+window.onYouTubeIframeAPIReady = function() {
+    log('YouTube IFrame API ready');
+    ytPlayer = new YT.Player('player', {
+        height: '100%', width: '100%',
+        playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
+        events: { 
+            'onStateChange': onPlayerStateChange,
+            'onReady': onPlayerReady,
+            'onError': onPlayerError
+        }
+    });
+};
 
-    function onPlayerError(event) {
-        log(`Youtubeer error: ${event.data}`);
-    }
+function onPlayerReady(event) {
+    log('YouTube Player ready');
+    isYouTubeReady = true;
+}
 
-    // === 2. ĐƠN GIẢN HÓA LOGIC KHI VIDEO KẾT THÚC ===
-    // Receiver chỉ cần báo cáo là video đã kết thúc, không tự quyết định chuyển bài nữa.
-    // --- SAU KHI SỬA ---
+function onPlayerError(event) {
+    log(`Youtubeer error: ${event.data}`);
+}
+
+// <<< SỬA LẠI onPlayerStateChange VỚI THỜI GIAN CHỜ HỢP LÝ >>>
 function onPlayerStateChange(event) {
     log(`Player state: ${event.data}`);
     if (event.data === YT.PlayerState.ENDED) {
-        log('Video ended. Displaying reward and setting a delay before notifying sender.');
+        log('Video ended. Displaying reward and setting a short delay.');
         viewerOverlay.style.opacity = 0;
         viewerOverlay.style.animation = "none";
         
-        // Hiển thị khen thưởng nếu có
         if (currentViewerName) {
             showRewardMessage(currentViewerName);
         }
         
-        // <<< THAY ĐỔI QUAN TRỌNG Ở ĐÂY >>>
-        // Đợi 4 giây để người dùng xem thông báo rồi mới báo cho ViewModel
+        // Đợi 9 giây để người dùng xem thông báo rồi mới báo cho ViewModel
         setTimeout(() => {
             log('Delay finished. Notifying sender to play next video.');
             const message = { type: "VIDEO_ENDED" };
@@ -148,26 +143,63 @@ function onPlayerStateChange(event) {
     }
 }
 
-    // === 3. VIẾT LẠI HOÀN TOÀN BỘ LẮNG NGHE LỆNH TÙY CHỈNH ===
-    // Chỉ lắng nghe các lệnh mà ViewModel mới gửi: JUMP_TO và PLAY_NEXT
-    context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
-        const data = event.data;
-        log(`Received custom message: ${JSON.stringify(data)}`);
-        
-        // Cả hai lệnh JUMP_TO và PLAY_NEXT đều có cùng cấu trúc và hành động
-        if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
-            if (data.media) {
-                log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
-                loadVideoFromMessage(data.media);
-            }
+context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
+    const data = event.data;
+    log(`Received custom message: ${JSON.stringify(data)}`);
+    
+    if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
+        if (data.media) {
+            log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
+            loadVideoFromMessage(data.media);
         }
-    });
+    }
+});
 
-    // Hàm trợ giúp để tải video từ tin nhắn (dùng cho JUMP_TO và PLAY_NEXT)
-    function showRewardMessage(viewerName) {
-    // <<< THAY ĐỔI 1: Bắt đầu đếm từ 20 >>>
+function loadVideoFromMessage(media) {
+    const videoId = media.contentId;
+    const customData = media.customData || {};
+
+    if (isYouTubeReady && ytPlayer && videoId) {
+        ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+    }
+
+    currentViewerName = customData.viewerName;
+    if (currentViewerName) {
+        viewerOverlay.textContent = `Ca sỹ trình bày: ${currentViewerName}`;
+        viewerOverlay.style.opacity = 1;
+        setTimeout(setMarquee, 0);
+    } else {
+        viewerOverlay.textContent = "";
+        viewerOverlay.style.opacity = 0;
+        viewerOverlay.style.animation = "none";
+    }
+}
+
+playerManager.setMessageInterceptor(
+    cast.framework.messages.MessageType.LOAD,
+    loadRequestData => {
+        log('Standard LOAD command received for the first video.');
+        if (loadRequestData.media) {
+            loadVideoFromMessage(loadRequestData.media);
+        }
+        return null;
+    }
+);
+
+playerManager.setMessageInterceptor(
+    cast.framework.messages.MessageType.PLAY,
+    () => { if (ytPlayer) ytPlayer.playVideo(); return null; }
+);
+
+playerManager.setMessageInterceptor(
+    cast.framework.messages.MessageType.PAUSE,
+    () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
+);
+
+// <<< GIỮ LẠI DUY NHẤT PHIÊN BẢN ĐÚNG CỦA showRewardMessage >>>
+function showRewardMessage(viewerName) {
     const startScore = 20;
-    const finalScore = Math.floor(Math.random() * 11) + 90; // Vẫn là số ngẫu nhiên 90-100
+    const finalScore = Math.floor(Math.random() * 11) + 90; // Ngẫu nhiên 90-100
     let currentScore = startScore;
 
     rewardOverlay.innerHTML =
@@ -176,7 +208,6 @@ function onPlayerStateChange(event) {
         `<div class="reward-score"><span id="score-counter">${startScore}</span> điểm</div>`;
 
     const scoreElement = document.getElementById('score-counter');
-
     rewardOverlay.style.opacity = 1;
     log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
 
@@ -189,7 +220,7 @@ function onPlayerStateChange(event) {
         }
     }, 50);
 
-    // <<< THAY ĐỔI 2: Thời gian hiển thị là 10 giây >>>
+    // Thời gian hiển thị là 10 giây
     setTimeout(() => {
         rewardOverlay.style.opacity = 0;
         clearInterval(counterInterval);
@@ -197,72 +228,12 @@ function onPlayerStateChange(event) {
     }, 10000); // 10000 mili-giây = 10 giây
 }
 
-    // --- Xử lý các lệnh Cast chuẩn ---
-    // Lệnh LOAD vẫn cần thiết cho lần phát đầu tiên do ViewModel gọi remoteMediaClient.load()
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.LOAD,
-        loadRequestData => {
-            log('Standard LOAD command received for the first video.');
-            if (loadRequestData.media) {
-                loadVideoFromMessage(loadRequestData.media);
-            }
-            return null; // Chặn xử lý mặc định
-        }
-    );
+const options = new cast.framework.CastReceiverOptions();
+options.disableIdleTimeout = true;
+context.start(options);
+log('Cast receiver started');
 
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.PLAY,
-        () => { if (ytPlayer) ytPlayer.playVideo(); return null; }
-    );
-
-    playerManager.setMessageInterceptor(
-        cast.framework.messages.MessageType.PAUSE,
-        () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
-    );
-
-    // === 4. LOẠI BỎ CÁC HÀM KHÔNG CẦN THIẾT ===
-    // Các hàm sendCurrentStatus, handleQueueAdvance đã bị loại bỏ vì Sender quản lý hết.
-    
-    function showRewardMessage(viewerName) {
-    const startScore = 80;
-    const finalScore = Math.floor(Math.random() * 11) + 90; // Tạo số ngẫu nhiên từ 90-100
-    let currentScore = startScore;
-
-    // 1. Tạo cấu trúc HTML ban đầu với một thẻ <span> để chứa điểm số
-    //    Điều này cho phép chúng ta cập nhật chỉ riêng con số mà không ảnh hưởng đến phần còn lại.
-    rewardOverlay.innerHTML = `Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,<br>điểm khen ngợi <span id="score-counter">${startScore}</span> điểm.`;
-    const scoreElement = document.getElementById('score-counter');
-
-    // 2. Hiển thị hộp thoại
-    rewardOverlay.style.opacity = 1;
-    log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
-
-    // 3. Bắt đầu hiệu ứng đếm số
-    const counterInterval = setInterval(() => {
-        // Nếu điểm hiện tại chưa bằng điểm cuối cùng thì tiếp tục đếm
-        if (currentScore < finalScore) {
-            currentScore++; // Tăng điểm lên 1
-            scoreElement.textContent = currentScore; // Cập nhật con số trên màn hình
-        } else {
-            // Nếu đã đếm tới nơi, dừng bộ đếm
-            clearInterval(counterInterval);
-        }
-    }, 50); // Tốc độ đếm: cập nhật số mới sau mỗi 50 mili-giây
-
-    // 4. Đặt hẹn giờ để ẩn toàn bộ thông báo sau 5 giây
-    setTimeout(() => {
-        rewardOverlay.style.opacity = 0;
-        // Đảm bảo dừng bộ đếm phòng trường hợp nó chưa dừng
-        clearInterval(counterInterval);
-        log('Reward message hidden');
-    }, 5000);
-}
-
-    // Khởi động Cast receiver
-    const options = new cast.framework.CastReceiverOptions();
-    options.disableIdleTimeout = true;
-    context.start(options);
-    log('Cast receiver started');
+// <<< KẾT THÚC NỘI DUNG SCRIPT ĐÃ SỬA >>>
 </script>
 </body>
 </html>
