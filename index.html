@@ -163,24 +163,32 @@
     }
 
     function onPlayerStateChange(event) {
-        log(`Player state: ${event.data}`);
-        if (event.data === YT.PlayerState.ENDED) {
-            log('Video ended. Displaying reward and setting a short delay.');
-            viewerOverlay.style.opacity = 0;
-            viewerOverlay.style.animation = "none";
-            
-            if (currentViewerName) {
-                showRewardMessage(currentViewerName);
-            }
-            
-            // <<< SỬA LỖI: Đặt lại thời gian chờ là 4.5 giây để chuyển bài nhanh >>>
-            setTimeout(() => {
-                log('Delay finished. Notifying sender to play next video.');
+    log(`Player state: ${event.data}`);
+    if (event.data === YT.PlayerState.ENDED) {
+        // <<< BƯỚC 1: Lưu lại ID của video vừa thực sự kết thúc >>>
+        const endedVideoId = currentVideoId; 
+
+        log('Video ended. Displaying reward and setting a short delay.');
+        viewerOverlay.style.opacity = 0;
+        viewerOverlay.style.animation = "none";
+        
+        if (currentViewerName) {
+            showRewardMessage(currentViewerName);
+        }
+        
+        setTimeout(() => {
+            // <<< BƯỚC 2: Chỉ gửi tín hiệu nếu không có video nào khác đã chen vào phát >>>
+            // Nếu currentVideoId vẫn bằng endedVideoId, tức là không có gì thay đổi.
+            if (currentVideoId === endedVideoId) {
+                log(`Delay finished for ${endedVideoId}. Notifying sender to play next video.`);
                 const message = { type: "VIDEO_ENDED" };
                 context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
-            }, 4500); // 4.5 giây
-        }
+            } else {
+                log(`Delay finished for ${endedVideoId}, but a new video (${currentVideoId}) is already playing. Cancelling autoplay.`);
+            }
+        }, 4500); // 4.5 giây
     }
+}
 
     context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
         const data = event.data;
