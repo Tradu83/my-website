@@ -157,15 +157,22 @@
     // <<< HÃY DÙNG PHIÊN BẢN HÀM NÀY >>>
 function onPlayerStateChange(event) {
     log(`Player state: ${event.data}`);
+    
     if (event.data === YT.PlayerState.ENDED) {
-        log('Video ended. Displaying reward and setting a short delay.');
-        
-        // Hiển thị khen thưởng
+        log('Video ended. Starting transition to next video.');
+
+        // <<< THAY ĐỔI 1: Dọn dẹp giao diện của video cũ ngay lập tức >>>
+        // Ẩn dòng chữ chạy "Ca sỹ trình bày..."
+        viewerOverlay.style.opacity = 0;
+        viewerOverlay.style.animation = "none";
+
+        // Hiển thị thông báo khen thưởng (nếu có tên ca sỹ)
         if (currentViewerName) {
             showRewardMessage(currentViewerName);
         }
         
-        // Logic đơn giản: Chờ 4.5 giây rồi GỬI TÍN HIỆU. Không kiểm tra gì thêm.
+        // <<< THAY ĐỔI 2: Logic gửi tín hiệu không đổi nhưng được đặt sau các bước dọn dẹp >>>
+        // Đợi 4.5 giây để người dùng xem thông báo rồi mới gửi tín hiệu về Service
         setTimeout(() => {
             log('Delay finished. Notifying sender to play next video.');
             const message = { type: "VIDEO_ENDED" };
