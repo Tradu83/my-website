@@ -172,12 +172,12 @@ function onPlayerStateChange(event) {
         }
         
         // <<< THAY ĐỔI 2: Logic gửi tín hiệu không đổi nhưng được đặt sau các bước dọn dẹp >>>
-        // Đợi 4.5 giây để người dùng xem thông báo rồi mới gửi tín hiệu về Service
+        // Đợi 6 giây để người dùng xem thông báo rồi mới gửi tín hiệu về Service
         setTimeout(() => {
             log('Delay finished. Notifying sender to play next video.');
             const message = { type: "VIDEO_ENDED" };
             context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
-        }, 4500); // 4.5 giây
+        }, 6000); // 6 giây
     }
 }
 
@@ -245,7 +245,7 @@ function onPlayerStateChange(event) {
 
     function showRewardMessage(viewerName) {
         const startScore = 20;
-        const finalScore = Math.floor(Math.random() * 11) + 90;
+        const finalScore = Math.floor(Math.random() * 11) + 85;
         let currentScore = startScore;
 
         rewardOverlay.innerHTML =
@@ -284,3 +284,4 @@ function onPlayerStateChange(event) {
     </script>
 </body>
 </html>
+
