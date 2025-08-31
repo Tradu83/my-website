@@ -125,7 +125,10 @@
     let ytPlayer;
     let isYouTubeReady = false;
     let currentViewerName = null;
-    const rewardAudio = new Audio('music.mp3'); 
+    const rewardAudio = new Audio('music.mp3');
+    let rewardShown = false; // Biến để kiểm tra đã hiển thị thông báo khen thưởng chưa
+    let videoDuration = 0; // Thời lượng video hiện tại
+    let currentTime = 0; // Thời gian hiện tại của video 
 
     function log(message) {
         console.log('[YouTube Receiver]', message);
@@ -153,31 +156,79 @@
         log(`Youtubeer error: ${event.data}`);
     }
 
+    // Hàm theo dõi thời gian video để hiển thị thông báo khen thưởng
+    function checkVideoProgress() {
+        if (ytPlayer && ytPlayer.getCurrentTime && ytPlayer.getDuration) {
+            const newCurrentTime = ytPlayer.getCurrentTime();
+            const newVideoDuration = ytPlayer.getDuration();
+            
+            // Cập nhật thời gian
+            currentTime = newCurrentTime;
+            videoDuration = newVideoDuration;
+            
+            // Kiểm tra nếu video bị tua ngược (phát lại từ đầu)
+            if (newCurrentTime < currentTime - 5) {
+                log(`Video seeked backward. Resetting reward state.`);
+                rewardShown = false;
+            }
+            
+            // Hiển thị thông báo khen thưởng trước khi video kết thúc 10 giây
+            if (currentViewerName && !rewardShown && videoDuration > 0 && (videoDuration - currentTime) <= 10) {
+                log(`Video ending soon (${Math.round(videoDuration - currentTime)}s left). Showing reward message.`);
+                showRewardMessage(currentViewerName);
+                rewardShown = true;
+            }
+        }
+    }
+
     // === SỬA LỖI 2: Quay về logic đơn giản và ổn định ===
     // <<< HÃY DÙNG PHIÊN BẢN HÀM NÀY >>>
 function onPlayerStateChange(event) {
     log(`Player state: ${event.data}`);
     
+    if (event.data === YT.PlayerState.PLAYING) {
+        log('Video started playing. Starting progress monitoring.');
+        
+        // Reset biến khi video bắt đầu phát (bao gồm cả phát lại từ đầu)
+        rewardShown = false;
+        currentTime = 0;
+        videoDuration = 0;
+        
+        // Bắt đầu theo dõi tiến độ video
+        const progressInterval = setInterval(() => {
+            checkVideoProgress();
+        }, 1000); // Kiểm tra mỗi giây
+        
+        // Lưu interval để dừng khi video kết thúc
+        window.progressInterval = progressInterval;
+    }
+    
+    if (event.data === YT.PlayerState.PAUSED) {
+        log('Video paused. Stopping progress monitoring.');
+        // Dừng theo dõi tiến độ khi video tạm dừng
+        if (window.progressInterval) {
+            clearInterval(window.progressInterval);
+            window.progressInterval = null;
+        }
+    }
+    
     if (event.data === YT.PlayerState.ENDED) {
-        log('Video ended. Starting transition to next video.');
+        log('Video ended. Sending signal to play next video immediately.');
+        
+        // Dừng theo dõi tiến độ video
+        if (window.progressInterval) {
+            clearInterval(window.progressInterval);
+            window.progressInterval = null;
+        }
 
-        // <<< THAY ĐỔI 1: Dọn dẹp giao diện của video cũ ngay lập tức >>>
-        // Ẩn dòng chữ chạy "Ca sỹ trình bày..."
+        // Dọn dẹp giao diện
         viewerOverlay.style.opacity = 0;
         viewerOverlay.style.animation = "none";
 
-        // Hiển thị thông báo khen thưởng (nếu có tên ca sỹ)
-        if (currentViewerName) {
-            showRewardMessage(currentViewerName);
-        }
-        
-        // <<< THAY ĐỔI 2: Logic gửi tín hiệu không đổi nhưng được đặt sau các bước dọn dẹp >>>
-        // Đợi 6 giây để người dùng xem thông báo rồi mới gửi tín hiệu về Service
-        setTimeout(() => {
-            log('Delay finished. Notifying sender to play next video.');
-            const message = { type: "VIDEO_ENDED" };
-            context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
-        }, 6000); // 6 giây
+        // Gửi tín hiệu về ứng dụng ngay lập tức để phát video tiếp theo
+        const message = { type: "VIDEO_ENDED" };
+        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
+        log('VIDEO_ENDED signal sent to Android app.');
     }
 }
 
@@ -198,6 +249,17 @@ function onPlayerStateChange(event) {
         rewardAudio.pause();
         rewardAudio.currentTime = 0;
 
+        // Dừng theo dõi tiến độ video cũ
+        if (window.progressInterval) {
+            clearInterval(window.progressInterval);
+            window.progressInterval = null;
+        }
+
+        // Reset biến cho video mới
+        rewardShown = false;
+        currentTime = 0;
+        videoDuration = 0;
+
         const splash = document.getElementById('splash-screen');
         if (splash) {
             splash.style.display = 'none';
@@ -212,7 +274,7 @@ function onPlayerStateChange(event) {
 
         currentViewerName = customData.viewerName;
         if (currentViewerName) {
-            viewerOverlay.textContent = `Ca sỹ trình bày: ${currentViewerName}`;
+            viewerOverlay.textContent = `Trình bày: ${currentViewerName}`;
             viewerOverlay.style.opacity = 1;
             setTimeout(setMarquee, 0);
         } else {
@@ -284,7 +346,3 @@ function onPlayerStateChange(event) {
     </script>
 </body>
 </html>
-
-
-
-
