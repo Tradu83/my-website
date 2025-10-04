@@ -100,7 +100,7 @@
                 window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
             });
         })();
-    </script>
+        </script>
 </head>
 <body>
     <div id="splash-screen">
@@ -109,13 +109,13 @@
             CHƯƠNG TRÌNH HÁT KARAOKE BY TRẦN DUYÊN
         </p>
     </div>
-    <div id="player"></div>
-    <div id="overlay-container"><div id="viewer-overlay"></div></div>
-    <div id="reward-overlay"></div>
+<div id="player"></div>
+<div id="overlay-container"><div id="viewer-overlay"></div></div>
+<div id="reward-overlay"></div>
 
-    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-    <script src="https://www.youtube.com/iframe_api"></script>
-    <script>
+<script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
     const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.custom";
 
     const context = cast.framework.CastReceiverContext.getInstance();
@@ -173,10 +173,16 @@
             }
             
             // Hiển thị thông báo khen thưởng trước khi video kết thúc 10 giây
+            // Chỉ hiển thị nếu thông báo khen thưởng được bật
             if (currentViewerName && !rewardShown && videoDuration > 0 && (videoDuration - currentTime) <= 10) {
-                log(`Video ending soon (${Math.round(videoDuration - currentTime)}s left). Showing reward message.`);
-                showRewardMessage(currentViewerName);
-                rewardShown = true;
+                // Kiểm tra trạng thái thông báo khen thưởng từ Android app
+                if (window.rewardNotificationEnabled !== false) {
+                    log(`Video ending soon (${Math.round(videoDuration - currentTime)}s left). Showing reward message.`);
+                    showRewardMessage(currentViewerName);
+                    rewardShown = true;
+                } else {
+                    log(`Video ending soon but reward notification is disabled.`);
+                }
             }
         }
     }
@@ -241,6 +247,10 @@ function onPlayerStateChange(event) {
                 log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
                 loadVideoFromMessage(data.media);
             }
+        } else if (data.type === "REWARD_NOTIFICATION_STATUS") {
+            // Cập nhật trạng thái thông báo khen thưởng
+            window.rewardNotificationEnabled = data.enabled;
+            log(`Reward notification status updated: ${data.enabled ? 'enabled' : 'disabled'}`);
         }
     });
 
@@ -265,22 +275,22 @@ function onPlayerStateChange(event) {
             splash.style.display = 'none';
         }
 
-        const videoId = media.contentId;
-        const customData = media.customData || {};
-
-        if (isYouTubeReady && ytPlayer && videoId) {
-            ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+            const videoId = media.contentId;
+            const customData = media.customData || {};
+            
+            if (isYouTubeReady && ytPlayer && videoId) {
+                ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
         }
 
         currentViewerName = customData.viewerName;
         if (currentViewerName) {
             viewerOverlay.textContent = `Trình bày: ${currentViewerName}`;
-            viewerOverlay.style.opacity = 1;
-            setTimeout(setMarquee, 0);
-        } else {
-            viewerOverlay.textContent = "";
-            viewerOverlay.style.opacity = 0;
-            viewerOverlay.style.animation = "none";
+                viewerOverlay.style.opacity = 1;
+                setTimeout(setMarquee, 0);
+            } else {
+                viewerOverlay.textContent = "";
+                viewerOverlay.style.opacity = 0;
+                viewerOverlay.style.animation = "none";
         }
     }
 
@@ -332,10 +342,10 @@ function onPlayerStateChange(event) {
             }
         }, 50);
 
-        setTimeout(() => {
-            rewardOverlay.style.opacity = 0;
+            setTimeout(() => { 
+                rewardOverlay.style.opacity = 0; 
             clearInterval(counterInterval);
-            log('Reward message hidden');
+                log('Reward message hidden');
         }, 10000); // Đặt lại thời gian hiển thị 10 giây như mong muốn
     }
 
@@ -343,6 +353,6 @@ function onPlayerStateChange(event) {
     options.disableIdleTimeout = true;
     context.start(options);
     log('Cast receiver started');
-    </script>
+</script>
 </body>
 </html>
